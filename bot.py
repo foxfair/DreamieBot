@@ -92,7 +92,7 @@ async def on_ready():
     await bot.change_presence(activity=discord.Game(f"Fostering Dreamies"), afk=True)
     _uptime = datetime.datetime.utcnow()
     url = f"https://discordbots.org/api/bots/{bot.user.id}/stats"
-
+    
     bot._last_result = None
     bot.session = aiohttp.ClientSession()
 
@@ -145,10 +145,6 @@ async def invite(ctx):
 async def reload(ctx, cog=None):
     """Reloads a cog"""
     cog = cog or 'all'
-    is_owner = await ctx.bot.is_owner(ctx.author)
-    if not is_owner:
-        logger.info('User %s wanted to run priviledged command.' % ctx.author)
-        return
     if cog.lower() == 'all':
         for cog in all_extensions:
             try:

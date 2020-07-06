@@ -67,16 +67,5 @@ def is_staff():
         if ctx.author.id in auth_config.AUTHORIZED:
             return True
         else:
-            # await ctx.send('You cannot use this command because you are not a staff.')
             return False
     return commands.check(predicate)
-
-
-def is_owner():
-    async def wrapper(ctx):
-        if ctx.author.id in auth_config.OWNER:
-            return True
-        else:
-            await ctx.send('You cannot use this command because you are not the owner.')
-            return False
-    return commands.check(wrapper)

@@ -72,17 +72,19 @@ def printadict(data_dict, hide_self=False):
         try:
             del data['name']
             del data['user_id']
-            # del data_dict['can_time_travel']
         except KeyError as e:
-            #logger.warn('printadict errors: %s', str(e))
             print('printadict errors: %s', str(e))
 
-    return json.dumps(data, indent=2)
-
+    #return json.dumps(data, indent=2)
+    tmp = []
+    for k, v in data.items():
+        tmp.append('{}: {}'.format(k, v))
+    return '\n'.join(tmp)
+    
 
 def get_embed(color, text, title=None):
     '''Get an embedded object to send via bot.'''
-    # For an adopted request. Usually it will be closed soon.
+    # For a finished adoption request. Usually it will be closed soon.
     if color == 'green':
         colour = discord.Colour.green()
     # For fostering.
