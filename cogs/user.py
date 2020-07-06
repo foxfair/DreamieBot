@@ -3,7 +3,6 @@ import json
 import os
 import re
 import time
-import urllib
 
 import discord
 from discord.ext import commands
@@ -11,6 +10,7 @@ from dotenv import load_dotenv
 
 from cogs import request
 from ext import checks
+from ext import sheet
 from ext import utils
 
 load_dotenv()
@@ -43,7 +43,8 @@ class User(commands.Cog):
         flow = request.Flow(self.bot, ctx)
 
         if not villager:
-            text = 'Greetings! Which villager would you like to request?'
+            text = 'Greetings! Which villager would you like to request?\n'
+            text += 'Use **!request <villager>** command to open a request.'
             em = utils.get_embed('gray', text)
             await ctx.channel.send(embed=em)
             return
@@ -65,14 +66,12 @@ class User(commands.Cog):
         if message:
             em = utils.get_embed('red', message, title='Precheck Failed')
             await ctx.channel.send(embed=em)
-            # only for direct message.
-            # Note that use ctx.send, not ctx.channel.send!
-            # await ctx.send(message)
             return
 
         tm = time.localtime(time.time())
         timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
         # init data and data_dict
+        # data might be redundant because I use data_dict mostly.
         data = ""
         data_dict = dict()
         data = u"Request_Id: **{}**\n".format(request_id)
@@ -87,7 +86,7 @@ class User(commands.Cog):
 
         em = utils.get_embed('gray', 'Your Request Details:')
         await ctx.channel.send(embed=em)
-        await ctx.send(utils.printadict(details, hide_self=True))
+        await ctx.channel.send(utils.printadict(details, hide_self=True))
         time.sleep(1)
         # Flow control.
         tt_or_not = await ctx.send(f":information_source: Are you willing to do Time Travel in order to "
@@ -100,8 +99,34 @@ class User(commands.Cog):
         else:
             details['can_time_travel'] = True
 
+        # Available timeslot selection
+        timeslot = await ctx.send(f":information_source: Which time slot is the best choice to contact you"
+                                   " if we have to? \n"
+                                   "NOTE: Please refer to https://time.is/UTC and select your most available"
+                                   " timeslot in **UTC**.\n"
+                                   ":sparkles: Slot 1: 00:00 - 03:59 UTC.\n:eight_spoked_asterisk: Slot 2: 04:00 - 07:59 UTC.\n"
+                                   ":heart: Slot 3: 08:00 - 11:59 UTC.\n:rocket: Slot 4: 12:00 - 15:59 UTC.\n"
+                                   ":bullettrain_side: Slot 5: 16:00 - 19:59 UTC.\n:busstop: Slot 6: 20:00 - 23:59 UTC.\n")
+
+        slot_reaction = await flow.get_timeslot_reaction_confirm(timeslot, 200)
+        if slot_reaction is None:
+            return
+        if slot_reaction == 1:
+            details['avail_time'] = '00:00-03:59 UTC'
+        if slot_reaction == 2:
+            details['avail_time'] = '04:00-07:59 UTC'
+        if slot_reaction == 3:
+            details['avail_time'] = '08:00-11:59 UTC'
+        if slot_reaction == 4:
+            details['avail_time'] = '12:00-15:59 UTC'
+        if slot_reaction == 5:
+            details['avail_time'] = '16:00-19:59 UTC'
+        if slot_reaction == 6:
+            details['avail_time'] = '20:00-23:59 UTC'
+
+        # Final confirmation
         are_you_sure = await ctx.send(f":question: Please confirm YES/NO to add a new "
-                                      f"request of finding your dreamie **%s**" % villager)
+                                      f"request of finding **%s**" % villager)
 
         reaction = await flow.get_yes_no_reaction_confirm(are_you_sure, 200)
         if reaction is None:
@@ -124,10 +149,11 @@ class User(commands.Cog):
                 json.dump(data_dict, f, indent=None)
                 f.write('\n')
             await self.send_logs_user('%s requested a dreamie (%s) at %s' % (name, villager.capitalize(), timestring))
+            sheet.update_data(data_dict)
 
     @commands.command(name='status', aliases=['st'])
     async def status(self, ctx):
-        '''Check the status of a user's request(s).'''
+        '''Check the status of a user's request.'''
         # Retrieve data_dict from the request log file.
         data_dict = utils.open_requestlog()
         found = ""
@@ -147,7 +173,6 @@ class User(commands.Cog):
         else:
             em = utils.get_embed('red', "You don\'t have any request.")
             await ctx.channel.send(embed=em)
-            # await ctx.send("You don't have any request.")
 
     @commands.command(name='ready', aliases=['rdy'])
     async def ready(self, ctx, req_id):
@@ -156,6 +181,11 @@ class User(commands.Cog):
         data_dict = utils.open_requestlog()
         dreamie = None
         found = None
+        found_data = dict()
+
+        # Setup a Flow controller.
+        flow = request.Flow(self.bot, ctx)
+
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
                 # user can only mark their own request.
@@ -163,7 +193,6 @@ class User(commands.Cog):
                     if k == u'name' and ctx.message.author.name in v:
                         found = ('%s has marked request **%s** as ready to '
                                  'accept the dreamie!' % (ctx.message.author.name, req_id))
-                        # await ctx.send(message % (req_id, ctx.message.author.name))
                         details['status'] = utils.Status.READY.name
                         dreamie = details['villager']
                         dreamie = dreamie.split(',')[0]
@@ -171,18 +200,31 @@ class User(commands.Cog):
                         tm = time.localtime(time.time())
                         timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
                         details['last_modified'] = timestring
+                        found_data[request_id] = details
                         break
 
-        if found:
+        if not found:
+            em = utils.get_embed('red', 'Cannot found your request %s.' % req_id)
+            await ctx.channel.send(embed=em)
+            return
+
+        are_you_sure = await ctx.send(f":information_source: Please confirm YES/NO to indicate"
+                                      f" that you have an open plot ready to receive your dreamie.\n"
+                                      f"Request ID:**%s**" % request_id)
+        reaction = await flow.get_yes_no_reaction_confirm(are_you_sure, 200)
+
+        if reaction is None:
+            return
+        if not reaction:
+            em = utils.get_embed('red', 'Aborted.')
+            return await ctx.channel.send(embed=em)
+        elif reaction:
             color = utils.status_color(details)
             em = utils.get_embed(color, found)
             await ctx.channel.send(embed=em)
             utils.flush_requestlog(data_dict)
             await self.send_logs_user('%s is ready to accept a dreamie(%s).' % (ctx.message.author.name, dreamie))
-        else:
-            em = utils.get_embed('red', 'Cannot found your request %s.' % req_id)
-            await ctx.channel.send(embed=em)
-            return
+            sheet.update_data(found_data)
 
 
     @commands.command(name='cancel', aliases=['can'])
@@ -194,6 +236,7 @@ class User(commands.Cog):
         # Setup a Flow controller.
         flow = request.Flow(self.bot, ctx)
         found = False
+        found_data = dict()
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
                 # user can only cancel their own request.
@@ -203,12 +246,12 @@ class User(commands.Cog):
                         em = utils.get_embed('red', message, title='Cancel A Request')
                         await ctx.channel.send(embed=em)
                         found = True
-                        # await ctx.send("Cancelled request %s by %s" % (req_id, ctx.message.author.name))
                         details['status'] = utils.Status.CANCEL.name
                         # mark a last_modified timestring
                         tm = time.localtime(time.time())
                         timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
                         details['last_modified'] = timestring
+                        found_data[request_id] = details
                         break
         if not found:
             message = 'Your request %s was not found.' % req_id
@@ -225,11 +268,11 @@ class User(commands.Cog):
         if not reaction:
             em = utils.get_embed('red', 'Aborted.')
             return await ctx.channel.send(embed=em)
-            # return await ctx.send("Aborted.")
         elif reaction:
             utils.flush_requestlog(data_dict)
             await ctx.send(f"You\'ve cancelled this request.")
-            await self.send_logs_user('Cancelled request %s by %s' % (req_id, ctx.message.author.name))
+            await self.send_logs_user('Cancelled request %s by %s' % (req_id, ctx.message.author.name))            
+            sheet.update_data(found_data)
 
 
 def setup(bot):
