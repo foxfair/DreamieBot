@@ -24,8 +24,8 @@ class Status(Enum):
     # The default status of every new request, which is unreviewed and not approved yet.
     PENDING = 1
 
-    # When a staff has reviewed and approved a request, the status is changed to proceed.
-    PROCEED = 2
+    # When a staff has reviewed and approved a request, the status is changed to processing.
+    PROCESSING = 2
 
     # A staff has found a requested villager.
     FOUND = 3
@@ -118,8 +118,8 @@ def status_color(data):
     # default = gray. status=PENDING 
     color = 'gray'
 
-    # PROCEED = gold
-    if data['status'] == Status.PROCEED.name:
+    # PROCESSING = gold
+    if data['status'] == Status.PROCESSING.name:
         color = 'gold'
     # FOUND = orange
     if data['status'] == Status.FOUND.name:

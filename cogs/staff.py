@@ -100,7 +100,7 @@ class Staff(commands.Cog):
                 else:
                     message = 'Request **%s** is now approved by %s!'
                     await ctx.send(message % (req_id, staff))
-                    details['status'] = utils.Status.PROCEED.name
+                    details['status'] = utils.Status.PROCESSING.name
                     # mark a last_modified timestring
                     tm = time.localtime(time.time())
                     timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)

@@ -17,7 +17,7 @@ VILLAGER_NAMES = os.getenv('VILLAGER_NAMES')
 
 
 def precheck(user, villager):
-        '''Precheck steps before proceeding requests.'''
+        '''Precheck steps before processing requests.'''
         data_dict = utils.open_requestlog()
         # Precheck will fail when either one of these conditions is met:
         # - The user requested this villager before, so this is a duplicated check.

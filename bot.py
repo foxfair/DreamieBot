@@ -42,9 +42,9 @@ logger.addHandler(handler)
 # For users they can use these commands:
 #   'request': to request a new villager. The bot should generate a request ID and send back to user.
 #   'status': to check the status of their requests. Status enum(Enumerated type) are:
-#     ['PENDING', 'PROCEED', 'FOUND', 'CLOSED', 'READY', 'CANCEL']
+#     ['PENDING', 'PROCESSING', 'FOUND', 'CLOSED', 'READY', 'CANCEL']
 #     PENDING: The default status of every new request, which is unreviewed and not approved yet.
-#     PROCEED: When a staff has reviewed and approved a request, the status is changed to proceed.
+#     PROCESSING: When a staff has reviewed and approved a request, the status is changed to processing.
 #     FOUND: A staff has found a requested villager and fostered to wait for an open plot.
 #     CLOSED: The request has been fulfilled and closed.
 #     READY: A user indicates that there is an open plot, will be ready to welcome a dreamie home.

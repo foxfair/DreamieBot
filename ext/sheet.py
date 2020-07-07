@@ -44,7 +44,7 @@ def format_color(status, time_travel=False):
         'green': 1,
         'blue': 1}
 
-    # Status = PROCEED
+    # Status = PROCESSING
     cell_yellow = cell_white.copy()
     cell_yellow['backgroundColor'] = {
         'red': 1,
@@ -83,7 +83,7 @@ def format_color(status, time_travel=False):
 
     if status == utils.Status.PENDING.name:
         cell_color = cell_white
-    if status == utils.Status.PROCEED.name:
+    if status == utils.Status.PROCESSING.name:
         cell_color = cell_yellow
     if status == utils.Status.FOUND.name:
         cell_color = cell_orange
