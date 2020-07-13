@@ -26,7 +26,7 @@ def precheck(user, villager):
         villagers = []
         for request_id, details in list(data_dict.items()):
             if details['name'] == str(user) and (details['villager'] == villager):
-                message = 'You have requested a duplicated villager, check your request status.'
+                message = 'You have requested a duplicated villager, check your application with !status.'
                 return message
             for k, v in list(details.items()):
                 if (str(k) == 'name' and user in v and (details['status'] not in (utils.Status.CLOSED.name, utils.Status.CANCEL.name))):
@@ -36,12 +36,12 @@ def precheck(user, villager):
         for v in villagers:
             if pattern.search(v):
                 message = 'You requested **%s** before, please use *"!status"*'
-                message += ' command to get previous request ID.'
+                message += ' command to get previous application ID.'
                 return message % villager
         if len(villagers) >= REQUEST_LIMIT:
-            message = 'You hit the max request number (%d) per user.'
+            message = 'You hit the max application number (%d) per user.'
             message += '\nPlease work with the Villager Adoption Team to '
-            message += 'fulfill your current request(s) first.'
+            message += 'fulfill your current application first.'
             return message % REQUEST_LIMIT
 
 

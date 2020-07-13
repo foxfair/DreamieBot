@@ -11,7 +11,6 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-# from cogs import request
 from ext import auth_config
 
 load_dotenv()

@@ -7,14 +7,14 @@ from ext import utils
 # Sheet ID in the url, just behind https://docs.google.com/spreadsheets/d/<ID is here>
 GSHEET_ID='1rrwexbsVgOoKslDllp7-Sc0TPwoJxP9W_yKesg02tpo'
 # Or if the spreadhseet has been shared with you, you can search by its title.
-GSHEET_TITLE='Test discordbot-updater sheets'
+# GSHEET_TITLE='Test discordbot-updater sheets'
 # Which worksheet will the bot modify
 GSHEET_WORKSHEET='Sheet1'
 
 gc = gspread.service_account()
 
 # Open a sheet from a spreadsheet in one go
-sheet = gc.open(GSHEET_TITLE)
+sheet = gc.open_by_key(GSHEET_ID)
 wks = sheet.worksheet(GSHEET_WORKSHEET)
 
 
