@@ -69,6 +69,7 @@ logger.addHandler(handler)
 #       proceed & recruit a villager for them). Required argument: an application ID.
 #   'found': A staff has found a villager, and moved into a fostering house. Required argument: an application ID.
 #   'close': Close a request. Required argument: an application ID.
+#   'lock': Lock/unlock the bot and deny or accept future applications until its status is changed.
 
 def load_extension(cog, path='cogs.'):
     members = inspect.getmembers(cog)
