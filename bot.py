@@ -21,8 +21,10 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 # GUILD = os.getenv('DISCORD_GUILD')
 BOT_DESC = os.getenv('BOT_DESC')
 INVITE_URL = 'https://discord.com/api/oauth2/authorize?client_id=725436099018883153&permissions=216128&scope=bot'
+# What bot.change_presence will show in the available state.
+BOT_AVAIL_STATUS='Fostering Dreamies'
 
-# Two prefixes for different usages: ? for user, ! for admin
+# Two prefixes, but we use "!" mostly.
 BOT_PREFIX = {
         'user': '?',
         'admin': '!'
@@ -32,32 +34,41 @@ BOT_PREFIX = {
 bot = commands.Bot(command_prefix=BOT_PREFIX.values(), owner_id=auth_config.OWNER)
 all_extensions = [x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')]
 
+# loggers start here. NOTE: logs/ should exist.
 logger = logging.getLogger('discord')
 logger.setLevel(logging.DEBUG)
-handler = logging.FileHandler(filename='discord.log', encoding='utf-8', mode='w')
+handler = logging.FileHandler(filename='logs/discord.log', encoding='utf-8', mode='w')
+handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+logger.addHandler(handler)
+
+# Another logger for bot behavior.
+logger = logging.getLogger('bot')
+logger.setLevel(logging.INFO)
+handler = logging.FileHandler(filename='logs/bot.log', encoding='utf-8', mode='w')
 handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 logger.addHandler(handler)
 
 # What command we want to provide in this bot:
 # For users they can use these commands:
-#   'request': to request a new villager. The bot should generate a request ID and send back to user.
+#   'apply': Apply to request a new villager. The bot should generate an application ID and send back to user.
 #   'status': to check the status of their requests. Status enum(Enumerated type) are:
 #     ['PENDING', 'PROCESSING', 'FOUND', 'CLOSED', 'READY', 'CANCEL']
 #     PENDING: The default status of every new request, which is unreviewed and not approved yet.
 #     PROCESSING: When a staff has reviewed and approved a request, the status is changed to processing.
 #     FOUND: A staff has found a requested villager and fostered to wait for an open plot.
-#     CLOSED: The request has been fulfilled and closed.
+#     CLOSED: The application has been fulfilled and closed.
 #     READY: A user indicates that there is an open plot, will be ready to welcome a dreamie home.
-#     CANCEL: A request is cancelled before completion. It is either cancelled by a user or a staff.
-#   'ready': to indicate the user is ready now or in the next three days. required argument: a request ID.
-#   'cancel': to cancel a request. required argument: a request ID.
+#     CANCEL: An application is cancelled before completion. It is either cancelled by a user or
+#       reviewed then denied by a staff.
+#   'ready': to indicate the user is ready now or in the next three days. Required argument: an application ID.
+#   'cancel': to cancel a request. Required argument: an application ID.
 # ========================================================
 # For staff, we can do these:
 #   'list': List all requests or a specified request. Including cancelled and closed requests.
-#   'review': Review a request to approve or deny, so that move it to the next state (ready to proceed & recruit a villager for them)
-#     required argument: a request ID.
-#   'found': A staff has found a villager, and moved into a fostering house. required argument: a request ID.
-#   'close': Close a request. required argument: a request ID.
+#   'review': Review an application to approve or deny, so that move it to the next state (ready to
+#       proceed & recruit a villager for them). Required argument: an application ID.
+#   'found': A staff has found a villager, and moved into a fostering house. Required argument: an application ID.
+#   'close': Close a request. Required argument: an application ID.
 
 def load_extension(cog, path='cogs.'):
     members = inspect.getmembers(cog)
@@ -89,7 +100,7 @@ load_extensions(all_extensions)
 
 @bot.event
 async def on_ready():
-    await bot.change_presence(activity=discord.Game(f"Fostering Dreamies"), afk=True)
+    await bot.change_presence(activity=discord.Game(BOT_AVAIL_STATUS), afk=True)
     _uptime = datetime.datetime.utcnow()
     url = f"https://discordbots.org/api/bots/{bot.user.id}/stats"
     
@@ -126,14 +137,14 @@ async def on_command_error(ctx, error):
         await ctx.send(error)
 
 
-@bot.command(name='ping', group='Bot Itself')
+@bot.command(name='ping')
 async def ping(ctx):
     '''Pong! Get the bot's response time'''
     em = utils.get_embed('green', f'{bot.latency * 1000} ms', title='Pong!')
     await ctx.send(embed=em)
 
 
-@bot.command(name='invite', group='Bot Itself')
+@bot.command(name='invite')
 async def invite(ctx):
     '''Invite the bot to your server'''
     em = utils.get_embed('gray', f'Invite me to your server: {INVITE_URL}', title='Invite me!')
@@ -169,10 +180,18 @@ async def reload(ctx, cog=None):
 @commands.is_owner()
 async def shutdown(ctx):
     '''Shut down the bot'''
+    async def close():
+        await bot.session.close()
+        return await bot.logout()
+
+    logger.info('Disconnected from Discord. Shutting down the bot.')
     em = utils.get_embed('red', 'Shutting down....', title='Offline!')
     await ctx.send(embed=em)
-    await bot.logout()
-    logger.info('Disconnected from Discord. Shutting down the bot.')
+    # Release logger resource.
+    for h in logger.handlers:
+        h.close()
+        logger.removeHandler(h)
+    return await close()
 
 
 if __name__ == '__main__':
