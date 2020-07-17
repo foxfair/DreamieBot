@@ -22,30 +22,36 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 BOT_DESC = os.getenv('BOT_DESC')
 INVITE_URL = 'https://discord.com/api/oauth2/authorize?client_id=725436099018883153&permissions=216128&scope=bot'
 # What bot.change_presence will show in the available state.
-BOT_AVAIL_STATUS='Fostering Dreamies'
+BOT_AVAIL_STATUS = 'Fostering Dreamies'
 
-# Two prefixes, but we use "!" mostly.
-BOT_PREFIX = {
-        'user': '?',
-        'admin': '!'
-        }
+# If this prefix gets changed, change it in on_message() as well.
+BOT_PREFIX = {'user': '~', 'admin': '+'}
 
 # The Dreamie Bot starts here.
-bot = commands.Bot(command_prefix=BOT_PREFIX.values(), owner_id=auth_config.OWNER)
-all_extensions = [x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')]
+bot = commands.Bot(command_prefix=BOT_PREFIX.values(),
+                   owner_id=auth_config.OWNER)
+all_extensions = [
+    x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')
+]
 
 # loggers start here. NOTE: logs/ should exist.
 logger = logging.getLogger('discord')
 logger.setLevel(logging.DEBUG)
-handler = logging.FileHandler(filename='logs/discord.log', encoding='utf-8', mode='w')
-handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+handler = logging.FileHandler(filename='logs/discord.log',
+                              encoding='utf-8',
+                              mode='w')
+handler.setFormatter(
+    logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 logger.addHandler(handler)
 
 # Another logger for bot behavior.
 logger = logging.getLogger('bot')
 logger.setLevel(logging.INFO)
-handler = logging.FileHandler(filename='logs/bot.log', encoding='utf-8', mode='w')
-handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+handler = logging.FileHandler(filename='logs/bot.log',
+                              encoding='utf-8',
+                              mode='w')
+handler.setFormatter(
+    logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
 logger.addHandler(handler)
 
 # What command we want to provide in this bot:
@@ -69,7 +75,7 @@ logger.addHandler(handler)
 #       proceed & recruit a villager for them). Required argument: an application ID.
 #   'found': A staff has found a villager, and moved into a fostering house. Required argument: an application ID.
 #   'close': Close a request. Required argument: an application ID.
-#   'lock': Lock/unlock the bot and deny or accept future applications until its status is changed.
+
 
 def load_extension(cog, path='cogs.'):
     members = inspect.getmembers(cog)
@@ -101,41 +107,65 @@ load_extensions(all_extensions)
 
 @bot.event
 async def on_ready():
-    await bot.change_presence(activity=discord.Game(BOT_AVAIL_STATUS), afk=True)
+    await bot.change_presence(activity=discord.Game(BOT_AVAIL_STATUS),
+                              afk=True)
     _uptime = datetime.datetime.utcnow()
     url = f"https://discordbots.org/api/bots/{bot.user.id}/stats"
-    
+
     bot._last_result = None
     bot.session = aiohttp.ClientSession()
 
     print(f'{bot.user.name} has connected to Discord@{_uptime}!')
     logger.info('Connected to Discord.')
+    for guild in bot.guilds:
+        logger.info('Joined this guild: %s(%d)' % (guild.name, guild.id))
 
 
 @bot.event
 async def on_message(message):
-    if message.content.startswith('!') or message.content.startswith('?'):
+    if message.content.startswith('~'):
         if isinstance(message.channel, discord.DMChannel):
             await bot.process_commands(message)
         else:
             await message.channel.send('Only accept bot commands in DMs.')
+    if message.content.startswith(
+            '+') or message.channel.id in auth_config.SEND_MSG_CHANNELS:
+        # Staff has priviledges.
+        await bot.process_commands(message)
 
 
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.DisabledCommand):
-        em = utils.get_embed('red', f'_{ctx.command}_ command has been disabled.')
+        em = utils.get_embed('red',
+                             f'_{ctx.command}_ command has been disabled.')
         await ctx.send(embed=em)
 
     elif isinstance(error, commands.MissingRequiredArgument):
-        em = utils.get_embed('red', f'_{ctx.command}_ command missed a required argument.')
+        em = utils.get_embed(
+            'red', f'_{ctx.command}_ command missed a required argument.')
         await ctx.send(embed=em)
 
     elif isinstance(error, commands.BadArgument):
-        em = utils.get_embed('red', f'_{ctx.command}_ command called a bad argument.')
+        em = utils.get_embed(
+            'red', f'_{ctx.command}_ command called a bad argument.')
         await ctx.send(embed=em)
     else:
         await ctx.send(error)
+
+
+@bot.event
+async def on_guild_join(guild):
+    '''Log when joins a server.'''
+    logger.info('Joined a guild %s(%d), owner_id(%d), description(%s)',
+                guild.name, guild.id, guild.owner_id, guild.description)
+
+
+@bot.event
+async def on_guild_remove(guild):
+    '''Log when leaves a server.'''
+    logger.info('Removed by a guild %s(%d), owner_id(%d), description(%s)',
+                guild.name, guild.id, guild.owner_id, guild.description)
 
 
 @bot.command(name='ping')
@@ -143,12 +173,16 @@ async def ping(ctx):
     '''Pong! Get the bot's response time'''
     em = utils.get_embed('green', f'{bot.latency * 1000} ms', title='Pong!')
     await ctx.send(embed=em)
+    for guild in bot.guilds:
+        print('Joined this guild: %s(%d)' % (guild.name, guild.id))
 
 
 @bot.command(name='invite')
 async def invite(ctx):
     '''Invite the bot to your server'''
-    em = utils.get_embed('gray', f'Invite me to your server: {INVITE_URL}', title='Invite me!')
+    em = utils.get_embed('gray',
+                         f'Invite me to your server: {INVITE_URL}',
+                         title='Invite me!')
     await ctx.send(embed=em)
 
 
@@ -162,9 +196,12 @@ async def reload(ctx, cog=None):
             try:
                 bot.unload_extension(f"cogs.{cog}")
             except Exception as e:
-                await ctx.send(f"An error occured while reloading {cog}, error details: \n ```{e}```")
+                await ctx.send(
+                    f"An error occured while reloading {cog}, error details: \n ```{e}```"
+                )
         load_extensions(all_extensions)
-        return await ctx.send('All cogs updated successfully :white_check_mark:')
+        return await ctx.send(
+            'All cogs updated successfully :white_check_mark:')
     if cog not in all_extensions:
         return await ctx.send(f'Cog {cog} does not exist.')
     try:
@@ -172,9 +209,12 @@ async def reload(ctx, cog=None):
         await asyncio.sleep(1)
         load_extension(cog)
     except Exception as e:
-        await ctx.send(f"An error occured while reloading {cog}, error details: \n ```{e}```")
+        await ctx.send(
+            f"An error occured while reloading {cog}, error details: \n ```{e}```"
+        )
     else:
-        await ctx.send(f"Reloaded the {cog} cog successfully :white_check_mark:")
+        await ctx.send(
+            f"Reloaded the {cog} cog successfully :white_check_mark:")
 
 
 @bot.command(name='shutdown', aliases=['shut'], hidden=True)

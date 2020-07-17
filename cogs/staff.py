@@ -21,14 +21,13 @@ is_staff = checks.is_staff()
 
 class Staff(commands.Cog):
     '''Staff commands to manage villager applications.'''
-
     def __init__(self, bot):
         self.bot = bot
         # TODO: remove these two after confirm they are not used.
         self._last_result = None
         self.sessions = set()
         self.is_bot_locked = False
-        
+
     @commands.command(hidden=True)
     async def send_logs(self, data):
         '''Send logs to a logging channel.'''
@@ -58,9 +57,11 @@ class Staff(commands.Cog):
                 embed.description = ''.join(message)
                 await ctx.send(embed=embed)
 
-    @commands.command(name='review', aliases=['rev'],
-                      usage=('<req_id> will approve an application by its ID.\n'
-                             'To reject one, use "!review <req_id> denied"'))
+    @commands.command(
+        name='review',
+        aliases=['rev'],
+        usage=('<req_id> will approve an application by its ID.\n'
+               'To reject one, use "~review <req_id> denied"'))
     @is_staff
     async def review(self, ctx, req_id, denied=None):
         '''Review an application. The result is either approved or denied.'''
@@ -73,12 +74,13 @@ class Staff(commands.Cog):
             if int(request_id) == int(req_id):
                 found = True
                 staff = ctx.message.author.name
+                staff += '#' + ctx.message.author.discriminator
                 user_id = int(details['user_id'])
                 if str(denied) == 'denied':
                     # The message is sent back to a user.
                     message = ':disappointed_relieved: Thank you for submitting an application for '
                     message += 'your dream villager! Unfortunately, your application has been '
-                    message += 'rejected after being reviewed by the Beyond Stalks Villager Adoption Team.' 
+                    message += 'rejected after being reviewed by the Beyond Stalks Villager Adoption Team.'
                     message += '\n\nThe reason for your application\'s rejection is inactivity within '
                     message += 'the server community. Our adoption program is designed to be a reward '
                     message += 'for consistently active and positive contributers to the server. '
@@ -88,7 +90,8 @@ class Staff(commands.Cog):
                     message += '\nYour application has been closed.\n\n'
                     message += 'Thanks!\nThe Villager Adoption Team'
                     # A server message for reference.
-                    server_message = '%s denied an application: %s' % (staff, req_id)
+                    server_message = '%s denied an application: %s' % (staff,
+                                                                       req_id)
                     await ctx.send(server_message)
 
                     details['status'] = utils.Status.CANCEL.name
@@ -96,6 +99,7 @@ class Staff(commands.Cog):
                     tm = time.localtime(time.time())
                     timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
                     details['last_modified'] = timestring
+                    details['staff'] = staff
 
                     # send to log channel
                     await self.send_logs(server_message)
@@ -107,20 +111,25 @@ class Staff(commands.Cog):
                 else:
                     message = 'Application **%s** is now approved by %s!'
                     await ctx.send(message % (req_id, staff))
-                    details['status'] = utils.Status.PROCESSING.name
+                    details['status'] = utils.Status.APPROVED.name
                     # mark a last_modified timestring
                     tm = time.localtime(time.time())
                     timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
                     details['last_modified'] = timestring
-
+                    details['staff'] = staff
                     # send to log channel
-                    await self.send_logs('%s approved an application: %s' % (staff, req_id))
+                    await self.send_logs('%s approved an application: %s' %
+                                         (staff, req_id))
                     # send a DM to note the user.
                     if user_id:
                         user = self.bot.get_user(user_id)
                         dm_chan = user.dm_channel or await user.create_dm()
-                        await dm_chan.send('Your application **%s** is approved by a staff (_%s_).' % (req_id, staff))
-                        await dm_chan.send('Please use the **!status** command to check current status.')
+                        await dm_chan.send(
+                            'Your application **%s** is approved by a staff (_%s_).'
+                            % (req_id, staff))
+                        await dm_chan.send(
+                            'Please use the **~status** command to check current status.'
+                        )
                 # Save changes to found_data
                 found_data[request_id] = details
         if not found:
@@ -129,7 +138,8 @@ class Staff(commands.Cog):
             # send to log channel
             await self.send_logs(message)
             return
-	# Write changes back.
+
+# Write changes back.
         utils.flush_requestlog(data_dict)
         sheet.update_data(found_data)
 
@@ -139,12 +149,12 @@ class Staff(commands.Cog):
         '''Indicates that you have found a requested villager.'''
         data_dict = utils.open_requestlog()
         user_id = 0
-        staff = None
+        staff = ctx.message.author.name
+        staff += '#' + ctx.message.author.discriminator
         dreamie = ''
         found_data = dict()
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
-                staff = ctx.message.author.name
                 message = 'A villager of this application **%s** was found by %s!'
                 await ctx.send(message % (req_id, staff))
                 details['status'] = utils.Status.FOUND.name
@@ -155,23 +165,30 @@ class Staff(commands.Cog):
                 tm = time.localtime(time.time())
                 timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
                 details['last_modified'] = timestring
+                details['staff'] = staff
                 user_id = int(details['user_id'])
                 found_data[request_id] = details
 
         utils.flush_requestlog(data_dict)
         sheet.update_data(found_data)
-
         # send to log channel
-        await self.send_logs('%s found a requested villager: %s' % (staff, dreamie))
+        await self.send_logs('%s found a requested villager: %s' %
+                             (staff, dreamie))
         # send a DM to note the user.
         if user_id:
             user = self.bot.get_user(user_id)
             dm_chan = user.dm_channel or await user.create_dm()
-            message = '%s We found your dreamie! %s is now being fostered.\n'
-            message += 'You will be contacted by *%s* to coordinate the following steps during '
-            message += 'your selected timeslot. \n'
-            message += 'Request Id: **%s**'
-            await dm_chan.send(message % (user.mention, dreamie, staff, req_id))
+            message = ('%s your dreamie %s has been found.\nYou have 72hrs'
+                       ' to get an open plot ready and use the **~ready** '
+                       'command to notify us. You will be contacted by '
+                       '%s to coordinate the following steps during your '
+                       'selected timeslot.\nRequest Id: %s\n\n'
+                       'If you do not get ready in time, this application '
+                       'will expire automatically. Your villager will not '
+                       'be held for you and will be passed to the next '
+                       'applicant.\n')
+            await dm_chan.send(message % (user.mention, dreamie, staff, req_id)
+                               )
 
     @commands.command(name='close', aliases=['cls'])
     @is_staff
@@ -179,12 +196,12 @@ class Staff(commands.Cog):
         '''Close an application and pop some firework.'''
         data_dict = utils.open_requestlog()
         user_id = 0
-        staff = None
+        staff = ctx.message.author.name
+        staff += '#' + ctx.message.author.discriminator
         villager = None
         found_data = dict()
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
-                staff = ctx.message.author.name
                 message = 'Congrats! Application **%s** is now closed by %s!'
                 villager = details['villager'].split(',')[0]
                 await ctx.send(message % (req_id, staff))
@@ -193,11 +210,14 @@ class Staff(commands.Cog):
                 tm = time.localtime(time.time())
                 timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
                 details['last_modified'] = timestring
+                details['staff'] = staff
                 user_id = int(details['user_id'])
                 found_data[request_id] = details
 
         utils.flush_requestlog(data_dict)
         sheet.update_data(found_data)
+        # Then hide the close row.
+        await sheet.archive_column(req_id)
 
         # send to log channel
         await self.send_logs('%s closed an application: %s' % (staff, req_id))
@@ -205,9 +225,12 @@ class Staff(commands.Cog):
         if user_id:
             user = self.bot.get_user(user_id)
             dm_chan = user.dm_channel or await user.create_dm()
-            message = 'Congrats, %s! You have found your dreamie, %s. \n'
-            message += 'Your application **%s** is closed by a staff (%s).'
-            await dm_chan.send(message % (user.mention, villager, req_id, staff))
+            message = 'Congrats, %s! You have found your dreamie, %s.\n'
+            message += 'Your application **%s** is closed by a staff (_%s_).\n'
+            message += 'After you\'ve settled down, please consider showing '
+            message += 'appreciation in the #Player-Feedback channel!'
+            await dm_chan.send(message %
+                               (user.mention, villager, req_id, staff))
 
     @commands.command(name='lock', aliases=['loc'])
     @is_staff
@@ -216,19 +239,19 @@ class Staff(commands.Cog):
         def get_state_text(state):
             "Wrapper function to get lock/unlock texts based on states."
             return 'lock' if state else 'unlock'
-            
-        staff = ctx.message.author.name
 
+        # TODO: use asyncio.Lock() to acquire lock!
+        # https://discordpy.readthedocs.io/en/latest/ext/tasks/
+        staff = ctx.message.author.name
+        staff += '#' + ctx.message.author.discriminator
         # Setup a Flow controller.
         flow = request.Flow(self.bot, ctx)
-        # debug
-        # print??
-
         # Flip the bot status.
         current_state_text = get_state_text(self.is_bot_locked)
         next_state_text = get_state_text(not self.is_bot_locked)
-        are_you_sure = await ctx.send(f":question: DreamieBot is currently {current_state_text}ed.\n"
-                                      f"Please react to change state to **{next_state_text}** it: ")
+        are_you_sure = await ctx.send(
+            f":question: DreamieBot is currently {current_state_text}ed.\n"
+            f"Please react to change state to **{next_state_text}** it: ")
         reaction = await flow.get_yes_no_reaction_confirm(are_you_sure, 200)
         if reaction is None:
             return
@@ -239,16 +262,23 @@ class Staff(commands.Cog):
             if self.is_bot_locked:
                 # Change the bot's presence to dnd. use this status to indicate
                 # that "do not distrub" it and reject all newer applications.
-                lock_activity = discord.Game(name='Locked All Applications', state='LOCKED')
+                lock_activity = discord.Game(name='Locked All Applications',
+                                             state='LOCKED')
                 new_status = discord.Status.dnd
-                await self.bot.change_presence(status=new_status, activity=lock_activity)
-                await ctx.send(f"You have locked the bot, use **!lock** command again to unlock it.")
+                await self.bot.change_presence(status=new_status,
+                                               activity=lock_activity)
+                await ctx.send(
+                    f"You have locked the bot, use **~lock** command again to unlock it."
+                )
             else:
                 # Manually revert back to the original status=online.
-                await self.bot.change_presence(activity=discord.Game(f"Fostering Dreamies"), afk=True)
-                await ctx.send(f"You have unlocked the bot and it is back in business.")
+                await self.bot.change_presence(
+                    activity=discord.Game(f"Fostering Dreamies"), afk=True)
+                await ctx.send(
+                    f"You have unlocked the bot and it is back in business.")
         # send to log channel
-        await self.send_logs('%s has **%sed** DreamieBot.' % (staff, next_state_text))
+        await self.send_logs('%s has **%sed** DreamieBot.' %
+                             (staff, next_state_text))
 
     @commands.command(name='inspect', aliases=['isp'], hidden=True)
     async def inspect(self, ctx):
@@ -260,10 +290,55 @@ class Staff(commands.Cog):
         channel_id = ctx.message.channel.id
         permission = ctx.message.channel.permissions_for(user_obj)
         message = '%s Here is your inspection data: ID=%s. Channel ID: %s. Permission: %s.'
-        await ctx.send(message % (user_obj.mention, user_id, channel_id, permission))
+        await ctx.send(message %
+                       (user_obj.mention, user_id, channel_id, permission))
         # send to log channel
         log_message = 'Inspected user: name=%s, ID=%s. Channel ID: %s. Permission: %s.'
-        await self.send_logs(log_message % (name, user_id, channel_id, permission))
+        await self.send_logs(log_message %
+                             (name, user_id, channel_id, permission))
+
+    @commands.command(name='claim')
+    async def claim(self, ctx, req_id):
+        '''Claim an application to move its status to PROCESSING.'''
+        data_dict = utils.open_requestlog()
+        user_id = 0
+        staff = ctx.message.author.name
+        staff += '#' + ctx.message.author.discriminator
+        found_data = dict()
+        for request_id, details in list(data_dict.items()):
+            if str(request_id) == str(req_id):
+                villager = details['villager'].split(',')[0]
+                details['status'] = utils.Status.PROCESSING.name
+                # mark a last_modified timestring
+                tm = time.localtime(time.time())
+                timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                details['last_modified'] = timestring
+                found_data[request_id] = details
+                user_id = int(details['user_id'])
+                name = details['name']
+                break
+        # Send a note back to the staff.
+        staff_msg = ('You claimed an application: %s (%s looks for %s).')
+        await ctx.send(staff_msg % (req_id, name, villager))
+        utils.flush_requestlog(data_dict)
+        sheet.update_data(found_data)
+        # send to log channel
+        await self.send_logs('%s claim an application: %s' % (staff, req_id))
+        # send a DM to note the user.
+        if user_id:
+            user = self.bot.get_user(user_id)
+            dm_chan = user.dm_channel or await user.create_dm()
+
+            user_msg = (
+                'Thank you for applying to the Dream Villager Adoption Program. We have approved your application and a staff member of our team, _%s_, has begun looking for your dream villager.\n'
+                'Please monitor your DMs for updates. You can use **~status** command to check the latest status.\n'
+                'If you have any questions, please check the FAQ in _#villager-adoption-program, or ask questions in #villager-trading_, or ping us **@adoptionteam**.'
+            )
+            await dm_chan.send(user_msg % staff)
+
+    # command: search
+
+    # command: archive
 
 
 def setup(bot):
