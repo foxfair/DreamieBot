@@ -1,7 +1,6 @@
 '''A collection of utility functions.'''
 
 from enum import Enum
-
 import json
 import os
 import random
@@ -23,7 +22,7 @@ class Status(Enum):
     # The default status of every new request, which is unreviewed and not approved yet.
     PENDING = 1
 
-    # When a staff has reviewed and approved a request, the status is changed to processing.
+    # When a staff has claimed an application.
     PROCESSING = 2
 
     # A staff has found a requested villager.
@@ -35,8 +34,11 @@ class Status(Enum):
     # A user indicates that there is an open plot, will be ready to welcome a dreamie home.
     READY = 5
 
-    # A request is cancelled before completion. It is either cancelled by a user or a staff.
+    # An application is cancelled before completion. It is either cancelled by a user or a staff.
     CANCEL = 6
+
+    # An application has been reviewed then approved.
+    APPROVED = 7
 
 
 def open_requestlog():
@@ -74,28 +76,72 @@ def printadict(data_dict, hide_self=False):
         except KeyError as e:
             print('printadict errors: %s', str(e))
 
-    #return json.dumps(data, indent=2)
+    # return json.dumps(data, indent=2)
     tmp = []
     for k, v in data.items():
         tmp.append('{}: {}'.format(k, v))
     return '\n'.join(tmp)
-    
+
+
+def form_text(details):
+    '''Form embedded texts from details dictionary.'''
+    try:
+        last_mod = details['last_modified']
+    except KeyError:
+        # a data without last_modified is ok.
+        last_mod = details['created_time']
+    text = '{}\n{}\n{}'.format(details['name'],
+                                details['villager'].split(',')[0], last_mod)
+    return text
+
+
+def genreport(data_dict, criterias=None):
+    '''Generate a search/summary report.'''
+    data = data_dict.copy()
+    table_dict = dict()
+    total = len(data)
+    approved = cancel = closed = processing = 0
+    if not criterias:
+        # summary report
+        all_status = [str(e.name) for e in Status]
+        tmp = dict()
+        table_dict['All'] = '{} ({}%)'.format(total, 100)
+        for status in all_status:
+            tmp.setdefault(status, 0)
+            for _, details in data.items():
+                if details['status'] == status:
+                    tmp[status] += 1
+            tmp_value = tmp[status]
+            if tmp_value == 0:
+                ratio_text = '- (-------)'
+            else:
+                ratio_tmp = str('%.3f' % (tmp_value/total)) + '%'
+                ratio_text = '%d (%s)' % (tmp_value, ratio_tmp)
+            table_dict[status] = ratio_text
+        # TODO: deal with time delta.
+    else:
+        # search by criterias and generate a report.
+        for request_id, details in data.items():
+            if criterias in str(details['status']):
+                table_dict[request_id] = form_text(details)
+    return table_dict
+
 
 def get_embed(color, text, title=None):
     '''Get an embedded object to send via bot.'''
-    # For a finished adoption request. Usually it will be closed soon.
+    # For a finished adoption request. Usually it will be closed.
     if color == 'green':
         colour = discord.Colour.green()
     # For fostering.
     if color == 'orange':
         colour = discord.Colour.dark_orange()
-    # For any system warning/error, and non-TT requests.
+    # For any system warning/error, and rejected applications.
     if color == 'red':
         colour = discord.Colour.red()
     # Informational, and the default status color.
     if color == 'gray':
         colour = discord.Colour.dark_grey()
-    # approved reqests.
+    # processing applications.
     if color == 'gold':
         colour = discord.Colour.gold()
     # Staff special
@@ -104,6 +150,9 @@ def get_embed(color, text, title=None):
 
     if color == 'dark_green':
         colour = discord.Colour.dark_green()
+
+    if color == 'skyblue':
+        colour = discord.Colour.from_rgb(0,191,255)
 
     em = discord.Embed()
     em.description = text
@@ -134,6 +183,10 @@ def status_color(data):
 
     if data['status'] == Status.CLOSED.name:
         color = 'dark_green'
+
+    # APPROVED = blue
+    if data['status'] == Status.APPROVED.name:
+        color = 'skyblue'
 
     return color
 

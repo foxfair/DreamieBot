@@ -1,15 +1,17 @@
 '''Modify applicant data in a Google Sheet by the bot.'''
+import asyncio
+
 import gspread
 from gspread_formatting import *
 
 from ext import utils
 
 # Sheet ID in the url, just behind https://docs.google.com/spreadsheets/d/<ID is here>
-GSHEET_ID='1rrwexbsVgOoKslDllp7-Sc0TPwoJxP9W_yKesg02tpo'
+GSHEET_ID = '1rrwexbsVgOoKslDllp7-Sc0TPwoJxP9W_yKesg02tpo'
 # Or if the spreadhseet has been shared with you, you can search by its title.
 # GSHEET_TITLE='Test discordbot-updater sheets'
 # Which worksheet will the bot modify
-GSHEET_WORKSHEET='Sheet1'
+GSHEET_WORKSHEET = 'Sheet1'
 
 gc = gspread.service_account()
 
@@ -30,8 +32,7 @@ def format_color(status, time_travel=False):
 
     red_text_format = text_format.copy()
     tmp_red = red_text_format['textFormat']
-    tmp_red ['foregroundColor'] = {
-        'red': 1}
+    tmp_red['foregroundColor'] = {'red': 1}
 
     # Status = PENDING, it is also the base of other colors.
     cell_white = dict()
@@ -39,42 +40,39 @@ def format_color(status, time_travel=False):
     cell_white['verticalAlignment'] = 'bottom'
     cell_white['wrapStrategy'] = 'OVERFLOW_CELL'
     cell_white['hyperlinkDisplayType'] = 'PLAIN_TEXT'
-    cell_white['backgroundColor'] = {
-        'red': 1,
-        'green': 1,
-        'blue': 1}
+    cell_white['backgroundColor'] = {'red': 1, 'green': 1, 'blue': 1}
 
     # Status = PROCESSING
     cell_yellow = cell_white.copy()
-    cell_yellow['backgroundColor'] = {
-        'red': 1,
-        'green': 1}
+    cell_yellow['backgroundColor'] = {'red': 1, 'green': 1}
 
     # Status = FOUND
     cell_orange = cell_white.copy()
-    cell_orange['backgroundColor'] = {
-        'red': 1,
-        'green': 0.6}
+    cell_orange['backgroundColor'] = {'red': 1, 'green': 0.6}
 
     # Status = CLOSED
     cell_green = cell_white.copy()
-    cell_green['backgroundColor'] = {
-        'red': 0,
-        'green': 1}
+    cell_green['backgroundColor'] = {'red': 0, 'green': 1}
 
     # Status = READY [user is ready].
     cell_greenaccent = cell_white.copy()
     cell_greenaccent['backgroundColor'] = {
         'red': 0.20392157,
         'green': 0.65882355,
-        'blue': 0.3254902}
+        'blue': 0.3254902
+    }
 
     # Status = CANCEL [user or staff cancelled a request]
     cell_gray = cell_white.copy()
-    cell_gray['backgroundColor'] = {
-        'red': 0.6,
-        'green': 0.6,
-        'blue': 0.6}
+    cell_gray['backgroundColor'] = {'red': 0.6, 'green': 0.6, 'blue': 0.6}
+
+    # Status = APPROVED
+    cell_skyblue = cell_white.copy()
+    cell_skyblue['backgroundColor'] = {
+        'red': 0.5294,
+        'green': 0.8078,
+        'blue': 0.9804
+    }
 
     if str(time_travel).lower() == 'false':
         red_text_format = red_text_format
@@ -93,6 +91,8 @@ def format_color(status, time_travel=False):
         cell_color = cell_greenaccent
     if status == utils.Status.CANCEL.name:
         cell_color = cell_gray
+    if status == utils.Status.APPROVED.name:
+        cell_color = cell_skyblue
     return (cell_color, red_text_format)
 
 
@@ -115,18 +115,21 @@ def update_data(data):
         except KeyError:
             # normal case: some requests don't have a last_modified data yet.
             pass
-
+        try:
+            new_data.append(details['staff'])
+        except KeyError:
+            # safe to pass because some data don't have staff info.
+            pass
     try:
         # Updating an existing data.
         cell = wks.find(str(request_id))
         row = cell.row
-        for i in range(1, len(new_data)+1):
-            wks.update_cell(row, i, new_data[i-1])
-        wks.format('A:H', {"horizontalAlignment": "CENTER"})
-        # TODO: add comment/note to status field and record the latest change.
+        for i in range(1, len(new_data) + 1):
+            wks.update_cell(row, i, new_data[i - 1])
+        wks.format('A:I', {"horizontalAlignment": "CENTER"})
         (color, red_text) = format_color(details['status'],
-                                 details['can_time_travel'])
-        data_range = 'A{}:H{}'.format(row, row)
+                                         details['can_time_travel'])
+        data_range = 'A{}:I{}'.format(row, row)
         # Update color and text format.
         wks.format(data_range, color)
         if red_text:
@@ -135,21 +138,50 @@ def update_data(data):
         # Appending new data
         all_data = wks.get_all_records()
         if not all_data:
-        # write headers first..
-            wks.append_row(['Request Id', 'Name', 'Status', 'Villager',
-                            'Created Time(UTC)', 'Time-Travel',
-                            'Available Time(UTC)', 'Last Modified(UTC)'])
-            wks.format('A1:H1', {'textFormat': {'bold': True}})
+            # write headers first..
+            wks.append_row([
+                'Request Id', 'Name', 'Status', 'Villager',
+                'Created Time(UTC)', 'Time-Travel', 'Available Time(UTC)',
+                'Last Modified(UTC)', 'Staff'
+            ])
+            wks.format('A1:I1', {'textFormat': {'bold': True}})
         wks.append_row(new_data)
-        wks.format('A:H', {"horizontalAlignment": "CENTER"})
+        wks.format('A:I', {"horizontalAlignment": "CENTER"})
 
         color, red_text = format_color(details['status'],
-                                 details['can_time_travel'])
+                                       details['can_time_travel'])
         # Headers don't count as data.
         # And we've insert a new row, so move 2 by the length.
         row = len(all_data) + 2
-        data_range = 'A{}:H{}'.format(row, row)
+        data_range = 'A{}:I{}'.format(row, row)
         # Update color and text format.
         wks.format(data_range, color)
         if red_text:
             wks.format(data_range, red_text)
+
+
+async def insert_note(request_id, notes):
+    '''Insert notes to an application case.'''
+    pass
+
+
+async def archive_column(request_id, hide=True):
+    '''Archive a column to hide from user views.'''
+    # Assuming request_id should exist in the sheet already.
+    cell = wks.find(str(request_id))
+    row = cell.row
+    requests = [{
+        'updateDimensionProperties': {
+            "range": {
+                "sheetId": wks.id,
+                "dimension": 'ROWS',
+                "startIndex": row - 1,
+                "endIndex": row,
+            },
+            "properties": {
+                "hiddenByUser": hide,
+            },
+            "fields": 'hiddenByUser',
+        }
+    }]
+    sheet.batch_update({'requests': requests})

@@ -1,4 +1,4 @@
-'''Check permission level.'''
+'''Checking module for permission level and generic routines.'''
 
 import os
 import re
@@ -26,7 +26,7 @@ def precheck(user, villager):
         villagers = []
         for request_id, details in list(data_dict.items()):
             if details['name'] == str(user) and (details['villager'] == villager):
-                message = 'You have requested a duplicated villager, check your application with !status.'
+                message = 'You have requested a duplicated villager, check your application with ~status.'
                 return message
             for k, v in list(details.items()):
                 if (str(k) == 'name' and user in v and (details['status'] not in (utils.Status.CLOSED.name, utils.Status.CANCEL.name))):
@@ -35,7 +35,7 @@ def precheck(user, villager):
         pattern = re.compile(str(villager).lower())
         for v in villagers:
             if pattern.search(v):
-                message = 'You requested **%s** before, please use *"!status"*'
+                message = 'You requested **%s** before, please use *"~status"*'
                 message += ' command to get previous application ID.'
                 return message % villager
         if len(villagers) >= REQUEST_LIMIT:
@@ -49,6 +49,11 @@ def validate_name(villager):
     '''Validate a villager's name from a static file.'''
     message = None
     found = False
+    if ' ' in villager:
+        tmp = []
+        for v in villager.split(' '):
+            tmp.append(v.capitalize())
+        villager = ' '.join(tmp)
     # This method is not very scalable, if a new villager is added we will need
     # to update the static file.
     with open(VILLAGER_NAMES) as f:
@@ -69,3 +74,18 @@ def is_staff():
         else:
             return False
     return commands.check(predicate)
+
+
+def find_staff_id(bot, name):
+    '''Pass a name(foxfair#2155) in and find its discord.User id.'''
+    found = None
+    staff_dict = dict()
+    for staff_id in auth_config.AUTHORIZED:
+        staff = bot.get_user(staff_id)
+        name = '{}#{}'.format(staff.name, staff.discriminator)
+        staff_dict[staff_id] = name
+    for k, v in staff_dict.items():
+        if str(name) in v:
+            found = k
+            break
+    return found
