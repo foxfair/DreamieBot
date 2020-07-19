@@ -1,3 +1,4 @@
+# Main file for the bot.
 import ast
 import datetime
 import inspect
@@ -140,15 +141,16 @@ async def on_command_error(ctx, error):
         em = utils.get_embed('red',
                              f'_{ctx.command}_ command has been disabled.')
         await ctx.send(embed=em)
-
     elif isinstance(error, commands.MissingRequiredArgument):
         em = utils.get_embed(
-            'red', f'_{ctx.command}_ command missed a required argument.')
+            'red', f'_{ctx.command}_ command missed a required argument.\n'
+                    'Please use *~help <command>* to see what is missing.')
         await ctx.send(embed=em)
 
     elif isinstance(error, commands.BadArgument):
         em = utils.get_embed(
-            'red', f'_{ctx.command}_ command called a bad argument.')
+            'red', f'_{ctx.command}_ command called a bad argument.\n'
+                    'Please use *~help <command>* to see what is missing.')
         await ctx.send(embed=em)
     else:
         await ctx.send(error)
