@@ -96,7 +96,7 @@ def format_color(status, time_travel=False):
     return (cell_color, red_text_format)
 
 
-def update_data(data):
+async def update_data(data):
     '''Update a single row in the spreadsheet and fill changes up with passed data.'''
     last_modified = ''
     new_data = []
