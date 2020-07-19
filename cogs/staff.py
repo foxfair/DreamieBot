@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import time
 
 import discord
@@ -71,7 +72,7 @@ class Staff(commands.Cog):
         found = False
         found_data = dict()
         for request_id, details in list(data_dict.items()):
-            if int(request_id) == int(req_id):
+            if str(request_id) == str(req_id):
                 found = True
                 staff = ctx.message.author.name
                 staff += '#' + ctx.message.author.discriminator
@@ -92,9 +93,7 @@ class Staff(commands.Cog):
                     # A server message for reference.
                     server_message = '%s denied an application: %s' % (staff,
                                                                        req_id)
-                    await ctx.send(server_message)
-
-                    details['status'] = utils.Status.CANCEL.name
+                    details['status'] = utils.Status.REJECTED.name
                     # mark a last_modified timestring
                     tm = time.localtime(time.time())
                     timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
@@ -138,10 +137,10 @@ class Staff(commands.Cog):
             # send to log channel
             await self.send_logs(message)
             return
-
-# Write changes back.
+        # Write changes back.
         utils.flush_requestlog(data_dict)
-        sheet.update_data(found_data)
+        time.sleep(1)
+        await sheet.update_data(found_data)
 
     @commands.command(name='found', aliases=['fnd'])
     @is_staff
@@ -170,7 +169,8 @@ class Staff(commands.Cog):
                 found_data[request_id] = details
 
         utils.flush_requestlog(data_dict)
-        sheet.update_data(found_data)
+        time.sleep(1)
+        await sheet.update_data(found_data)
         # send to log channel
         await self.send_logs('%s found a requested villager: %s' %
                              (staff, dreamie))
@@ -215,7 +215,8 @@ class Staff(commands.Cog):
                 found_data[request_id] = details
 
         utils.flush_requestlog(data_dict)
-        sheet.update_data(found_data)
+        time.sleep(1)
+        await sheet.update_data(found_data)
         # Then hide the close row.
         await sheet.archive_column(req_id)
 
@@ -298,6 +299,7 @@ class Staff(commands.Cog):
                              (name, user_id, channel_id, permission))
 
     @commands.command(name='claim')
+    @is_staff
     async def claim(self, ctx, req_id):
         '''Claim an application to move its status to PROCESSING.'''
         data_dict = utils.open_requestlog()
@@ -313,6 +315,7 @@ class Staff(commands.Cog):
                 tm = time.localtime(time.time())
                 timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
                 details['last_modified'] = timestring
+                details['staff'] = staff
                 found_data[request_id] = details
                 user_id = int(details['user_id'])
                 name = details['name']
@@ -321,24 +324,114 @@ class Staff(commands.Cog):
         staff_msg = ('You claimed an application: %s (%s looks for %s).')
         await ctx.send(staff_msg % (req_id, name, villager))
         utils.flush_requestlog(data_dict)
-        sheet.update_data(found_data)
+        time.sleep(1)
+        await sheet.update_data(found_data)
         # send to log channel
         await self.send_logs('%s claim an application: %s' % (staff, req_id))
         # send a DM to note the user.
         if user_id:
             user = self.bot.get_user(user_id)
             dm_chan = user.dm_channel or await user.create_dm()
-
             user_msg = (
-                'Thank you for applying to the Dream Villager Adoption Program. We have approved your application and a staff member of our team, _%s_, has begun looking for your dream villager.\n'
-                'Please monitor your DMs for updates. You can use **~status** command to check the latest status.\n'
-                'If you have any questions, please check the FAQ in _#villager-adoption-program, or ask questions in #villager-trading_, or ping us **@adoptionteam**.'
+                'Thank you for applying to the Dream Villager Adoption Program.'
+                ' We have approved your application and a staff member of our '
+                'team, _%s_, has begun looking for your dream villager.\n'
+                'Please monitor your DMs for updates. You can use **~status** '
+                'command to check the latest status.\n'
+                'If you have any questions, please check the FAQ in '
+                '_#villager-adoption-program, or ask questions in '
+                '#villager-trading_, or ping us **@adoptionteam**.'
             )
             await dm_chan.send(user_msg % staff)
 
-    # command: search
+    @commands.command(name='search', aliases=['sea'], usage=(
+            '<summary|status|name>'), hidden=True)
+    @is_staff
+    async def search(self, ctx, *input_args):
+        '''Search for a name, status criteria or summary in all applications.'''
+        data_dict = utils.open_requestlog()
+        user_id = 0
+        # Since this function is shared with a background task.
+        # When ctx = None, it will not send the result messages to the user,
+        # instead, it returns a dictionary.
+        all_args = [a.lower() for a in list(input_args)]
+        all_status = [t.name for t in utils.Status]
+        tmp_dict = dict()
+        target = all_args[0]
+        if target == 'summary':
+            total = len(data_dict)
+            # We don't care about closed, cancel or rejected applications.
+            for status in all_status:  # expected_status:
+                tmp_dict[status] = 0
+                for _, details in list(data_dict.items()):
+                    if status == details['status']:
+                        tmp_dict[status] += 1
+                if tmp_dict[status]:
+                    ratio = '{} ({:.3f}{})'.format(tmp_dict[status],
+                            (tmp_dict[status]/total*100), '%')
+                    tmp_dict[status] = ratio
+                else:
+                    tmp_dict[status] = '0 (------)'
+            if not ctx:
+                return tmp_dict
+            embed = discord.Embed()
+            embed.title = 'Applications Summary:'
+            embed.color = utils.random_color()
+            embed.description = 'Total Applications: %d' % total
+            for k, v in tmp_dict.items():
+                embed.add_field(name=k, value=v, inline=True)
+            return await ctx.send(embed=embed)
+        elif target.upper() in all_status:
+            # Search by status
+            target = target.upper()
+            tmp_dict = dict()
+            for request_id, details in list(data_dict.items()):
+                if target == details['status']:
+                    villager = details['villager'].split(', ')[0]
+                    tmp_dict[request_id] = '**{}** looks for _{}_'.format(
+                        details['name'], villager)
+            if not ctx:
+                return tmp_dict
 
-    # command: archive
+            title = '_%s_ Application' % target.capitalize()
+            if len(tmp_dict) > 1:
+                title += 's: *%d*' % len(tmp_dict)
+            else:
+                title += ': *%d*' % len(tmp_dict)
+            if tmp_dict:
+                embed = discord.Embed(title=title)
+                embed.color = utils.random_color()
+                for k, v in tmp_dict.items():
+                    embed.add_field(name=k, value=v, inline=True)
+                return await ctx.send(embed=embed)
+            else:
+                return await ctx.send('Found nothing for status=%s' % target)
+        elif 'name' in all_args[0]:
+            # Search by user, could be multiple names.
+            targets = all_args[1:]
+            for name in targets:
+                pattern = re.compile(r'%s' % name)
+        else:
+            print('nothing! all_args: %s' % all_args)
+    
+    @commands.command(name='archive', aliases=['ar'], hidden=True,
+                      usage='<req_id> to hide a row of the application id.'
+                            'Use anything after <req_id> will toggle and '
+                            'unhide its row')
+    @is_staff
+    async def archive(self, ctx, req_id, *input_args):
+        '''Archive and hide a row in the sheet by an application ID.'''
+        data_dict = utils.open_requestlog()
+        toggle = list(input_args)
+        if not toggle:
+            # always hide
+            await sheet.archive_column(req_id)
+        else:
+            # unhide
+            await sheet.archive_column(req_id, False)
+        server_msg = 'DreamieBot archived a row of request_id %s in the sheet.'
+        # send to log channel
+        return await self.send_logs(server_msg % (req_id))
 
 
 def setup(bot):
