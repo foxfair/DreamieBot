@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import json
 import os
 import re
@@ -17,6 +18,7 @@ load_dotenv()
 
 RECORD_FILE = os.getenv('RECORD_FILE')
 LOG_CHANNEL = os.getenv('LOG_CHANNEL')
+TIME_FORMAT = os.getenv('TIME_FORMAT')
 
 
 class User(commands.Cog):
@@ -54,6 +56,30 @@ class User(commands.Cog):
             text += 'Use **~apply <villager>** command to create an application.'
             em = utils.get_embed('gray', text)
             return await ctx.channel.send(embed=em)
+        # Before starting anything, check if this applicant was rejected in
+        # the last two weeks.
+        data_dict = utils.open_requestlog()
+        rejected = []
+        for request_id, details in list(data_dict.items()):
+            for k, v in list(details.items()):
+                if k == u'name' and ctx.message.author.name in v:
+                    # also hide requests with status == 'cancel' or 'closed'
+                    if details['status'] in (utils.Status.REJECTED.name):
+                        rejected.append(details)
+        current = datetime.datetime.utcnow()
+        for detail in rejected:
+            # Fixed the period to 2 weeks.
+            then_ts = time.strptime(detail['last_modified'], TIME_FORMAT)
+            then_dt = datetime.datetime.fromtimestamp(time.mktime(then_ts))
+            period = datetime.timedelta(days=14)
+            if (current-then_dt) < period:
+                rejected_msg = ('Sorry, your previous application was closed at '
+                                '%s within a two weeks cooldown.\nPlease come back'
+                                ' and reapply later.' % detail['last_modified'])
+                em = utils.get_embed('red', rejected_msg, title='Still In Cooldown')
+                await self.send_logs_user('%s attempted to re-apply a dreamie '
+                                          'while in a 2 weeks cooldown.' % name)
+                return await ctx.channel.send(embed=em)
         # Viallger name differeniation: some villagers have a space char
         # between its names:
         v = villager.lower()
@@ -81,7 +107,7 @@ class User(commands.Cog):
             return await ctx.send(result)
         villager_data = "{}, {}".format(villager, villager_link)
 
-        request_id = ctx.message.id
+        request_id = utils.generate_id(data_dict)  # ctx.message.id
         name = ctx.message.author.name
         name += '#' + ctx.message.author.discriminator
         message = checks.precheck(name, villager)
@@ -90,7 +116,7 @@ class User(commands.Cog):
             return await ctx.channel.send(embed=em)
 
         tm = time.localtime(time.time())
-        timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+        timestring = time.strftime(TIME_FORMAT, tm)
         # init data and data_dict
         # data might be redundant because I use data_dict mostly.
         data = ""
@@ -104,14 +130,15 @@ class User(commands.Cog):
         details['villager'] = villager_data
         data += u"CreatedTime: {}\n".format(timestring)
         details['created_time'] = timestring
-        # default null for these two.
-        details['last_modified'] = ''
-        details['staff'] = ''
 
         em = utils.get_embed('gray', 'Your Application Details:')
         await ctx.channel.send(embed=em)
         await ctx.channel.send(utils.printadict(details, hide_self=True))
         time.sleep(1)
+        # default null for these two. Added after showing details to users,
+        # so they won't know.
+        details['last_modified'] = ''
+        details['staff'] = ''
         # Flow control.
         tt_or_not = await ctx.send(
             f":information_source: Are you willing to do Time Travel in order to "
@@ -175,7 +202,7 @@ class User(commands.Cog):
         # Final confirmation
         are_you_sure = await ctx.send(
             f":question: Please confirm YES/NO to create a new "
-            f"application of finding **%s**" % villager)
+            f"application of finding **%s**." % villager)
 
         reaction = await flow.get_yes_no_reaction_confirm(are_you_sure, 200)
         if reaction is None:
@@ -200,7 +227,7 @@ class User(commands.Cog):
             with open(RECORD_FILE, mode="a") as f:
                 json.dump(data_dict, f, indent=None)
                 f.write('\n')
-            sheet.update_data(data_dict)
+            await sheet.update_data(data_dict)
             await self.send_logs_user('%s requested a dreamie (%s) at %s' %
                                       (name, villager.capitalize(), timestring)
                                       )
@@ -214,9 +241,11 @@ class User(commands.Cog):
         for request_id, details in list(data_dict.items()):
             for k, v in list(details.items()):
                 if k == u'name' and ctx.message.author.name in v:
-                    # also hide requests with status == 'cancel' or 'closed'
+                    # also hide closed requests with status == 'cancel',
+                    # 'rejected' or 'closed'
                     if details['status'] not in (utils.Status.CLOSED.name,
-                                                 utils.Status.CANCEL.name):
+                                                 utils.Status.CANCEL.name,
+                                                 utils.Status.REJECTED.name):
                         found += 'application_id: **%s**\n' % request_id
                         found += utils.printadict(details, hide_self=True)
                         found += '\n'
@@ -229,8 +258,27 @@ class User(commands.Cog):
             em = utils.get_embed('red', "You don\'t have any application.")
             await ctx.channel.send(embed=em)
 
+    def auto_find(self, data_dict, user):
+        '''Automatically find a request id from data dict for this user.'''
+        open_app = []
+        for request_id, details in list(data_dict.items()):
+            for k, v in list(details.items()):
+                if k == u'name' and user in v:
+                    # also hide closed requests with status == 'cancel',
+                    # 'rejected' or 'closed'
+                    if details['status'] not in (utils.Status.CLOSED.name,
+                                                 utils.Status.CANCEL.name,
+                                                 utils.Status.REJECTED.name):
+                        open_app.append(request_id)
+        if len(open_app) == 1:
+            return open_app[0]
+        else:
+            # should raise an exception?
+            print('something wrong in auto_find: Cannot find a user '
+                  'request or requests are >=2')
+
     @commands.command(name='ready', aliases=['rdy'])
-    async def ready(self, ctx, req_id):
+    async def ready(self, ctx, req_id=None):
         '''Send a note to the staff team when you are ready to accept a new villager.'''
         # Check if the requester matches.
         data_dict = utils.open_requestlog()
@@ -240,7 +288,10 @@ class User(commands.Cog):
 
         # Setup a Flow controller.
         flow = request.Flow(self.bot, ctx)
-
+        # Since we only allow 1 application per user per time, do a quick search if
+        # req_id = none and there is an open application of this user.
+        if not req_id:
+            req_id = self.auto_find(data_dict, ctx.message.author.name)
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
                 # user can only mark their own request.
@@ -255,8 +306,7 @@ class User(commands.Cog):
                         dreamie = dreamie.split(',')[0]
                         # mark a last_modified timestring
                         tm = time.localtime(time.time())
-                        timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z",
-                                                   tm)
+                        timestring = time.strftime(TIME_FORMAT, tm)
                         details['last_modified'] = timestring
                         found_data[request_id] = details
                         break
@@ -264,13 +314,12 @@ class User(commands.Cog):
         if not found:
             em = utils.get_embed('red',
                                  'Cannot found your application %s.' % req_id)
-            await ctx.channel.send(embed=em)
-            return
+            return await ctx.channel.send(embed=em)
 
         are_you_sure = await ctx.send(
             f":information_source: Please confirm YES/NO to indicate"
             f" that you have an open plot ready to receive your dreamie.\n"
-            f"Application ID:**%s**" % request_id)
+            f"Application ID:**%s**" % req_id)
         reaction = await flow.get_yes_no_reaction_confirm(are_you_sure, 200)
 
         if reaction is None:
@@ -283,14 +332,56 @@ class User(commands.Cog):
             em = utils.get_embed(color, found)
             await ctx.channel.send(embed=em)
             utils.flush_requestlog(data_dict)
-            sheet.update_data(found_data)
             await self.send_logs_user('%s is ready to accept a dreamie (%s).' %
                                       (ctx.message.author.name, dreamie))
-            # TODO: add staff dm here.
+            await sheet.update_data(found_data)
+            staff_lst = found_data[req_id]['staff'].split('#')
+            staff_id = discord.utils.get(self.bot.get_all_members(), name=staff_lst[0],
+                                          discriminator=staff_lst[1]).id
+            staff_obj = self.bot.get_user(staff_id)
+            staff_dm = staff_obj.dm_channel or await staff_obj.create_dm()
+            staff_msg = '%s: %s is ready to accept a dreamie (%s).' % (
+                staff_obj.mention, ctx.message.author.name, dreamie)
+            await staff_dm.send(staff_msg)
+            """
+            # Setup a channel invitation
+            user_obj = self.bot.get_user(ctx.message.author.id)
+            flow = request.Flow(self.bot, ctx)
+            are_you_sure = await ctx.send(
+                f":information_source: We are going to invite you to a group"
+                f" channel and our staff will comminucate with you there.\n"
+                f"Please confirm YES/NO to accept/deny the invitation:\n")
+
+            reaction = await flow.get_yes_no_reaction_confirm(are_you_sure, 200)
+            if reaction is None:
+                return
+            if not reaction:
+                em = utils.get_embed('red', 'Aborted joining the group channel.')
+                return await ctx.channel.send(embed=em)
+            elif reaction:
+                # invite both user and staff to a group channel.
+                title = '%s-%s' % (req_id, dreamie)
+                # await group_chan.add_recipients([staff_obj, user_obj])
+                #----------------- for testing, using FD (Fox's DevServer)
+                guild = self.bot.get_guild(725438501709152419)
+                overwrites = {
+                    # so its a secret channel.
+                    guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                    guild.me: discord.PermissionOverwrite(read_messages=True),
+                    guild.me: discord.PermissionOverwrite(create_instant_invite=True)
+                }
+                chan = await guild.create_text_channel(name=title, overwrites=overwrites)
+                inv = await chan.create_invite(reason="please join this group channel for your application.")
+                await ctx.send('Join the channel by this invitation link:\n%s' % inv)
+
+                staff_dm = staff_obj.dm_channel or await staff_obj.create_dm()
+                await staff_dm.send('%s Join this channel for a ready application with %s:\n%s' % (
+                    staff_obj.mention, user_obj.name, inv))
+            """
 
     @commands.command(name='cancel', aliases=['can'])
-    async def cancel(self, ctx, req_id):
-        '''Cancel an application. <application ID> is required.'''
+    async def cancel(self, ctx, req_id=None):
+        '''Cancel an application.'''
         # Check if the requester matches, or a staff can cancel.
         data_dict = utils.open_requestlog()
 
@@ -298,6 +389,10 @@ class User(commands.Cog):
         flow = request.Flow(self.bot, ctx)
         found = False
         found_data = dict()
+        # Since we only allow 1 application per user per time, do a quick search if
+        # req_id = none and there is an open application of this user.
+        if not req_id:
+            req_id = self.auto_find(data_dict, ctx.message.author.name)
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
                 # user can only cancel their own request.
@@ -312,8 +407,7 @@ class User(commands.Cog):
                         details['status'] = utils.Status.CANCEL.name
                         # mark a last_modified timestring
                         tm = time.localtime(time.time())
-                        timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z",
-                                                   tm)
+                        timestring = time.strftime(TIME_FORMAT, tm)
                         details['last_modified'] = timestring
                         found_data[request_id] = details
                         break
@@ -338,7 +432,9 @@ class User(commands.Cog):
             await ctx.send(f"You\'ve cancelled this application.")
             await self.send_logs_user('Cancelled application %s by %s' %
                                       (req_id, ctx.message.author.name))
-            sheet.update_data(found_data)
+            await sheet.update_data(found_data)
+            # Then hide the close row.
+            await sheet.archive_column(req_id)
 
 
 def setup(bot):
