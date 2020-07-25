@@ -62,7 +62,8 @@ def format_color(status, time_travel=False):
         'blue': 0.3254902
     }
 
-    # Status = CANCEL [user or staff cancelled a request]
+    # Status = CANCEL [user cancelled an application]
+    # Status = REJECTED [staff denied an application]
     cell_gray = cell_white.copy()
     cell_gray['backgroundColor'] = {'red': 0.6, 'green': 0.6, 'blue': 0.6}
 
@@ -89,7 +90,7 @@ def format_color(status, time_travel=False):
         cell_color = cell_green
     if status == utils.Status.READY.name:
         cell_color = cell_greenaccent
-    if status == utils.Status.CANCEL.name:
+    if status in (utils.Status.CANCEL.name, utils.Status.REJECTED.name):
         cell_color = cell_gray
     if status == utils.Status.APPROVED.name:
         cell_color = cell_skyblue
@@ -127,8 +128,8 @@ async def update_data(data):
         for i in range(1, len(new_data) + 1):
             wks.update_cell(row, i, new_data[i - 1])
         wks.format('A:I', {"horizontalAlignment": "CENTER"})
-        (color, red_text) = format_color(details['status'],
-                                         details['can_time_travel'])
+        color, red_text = format_color(details['status'],
+                                       details['can_time_travel'])
         data_range = 'A{}:I{}'.format(row, row)
         # Update color and text format.
         wks.format(data_range, color)
