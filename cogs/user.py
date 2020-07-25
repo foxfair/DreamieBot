@@ -53,7 +53,7 @@ class User(commands.Cog):
             return await ctx.channel.send(embed=em)
         if not villager:
             text = 'Greetings! Which villager would you like to request?\n'
-            text += 'Use **~apply <villager>** command to create an application.'
+            text += 'Use `~apply <villager>` command to create an application.'
             em = utils.get_embed('gray', text)
             return await ctx.channel.send(embed=em)
         # Before starting anything, check if this applicant was rejected in
@@ -78,7 +78,7 @@ class User(commands.Cog):
                                 ' and reapply later.' % detail['last_modified'])
                 em = utils.get_embed('red', rejected_msg, title='Still In Cooldown')
                 await self.send_logs_user('%s attempted to re-apply a dreamie '
-                                          'while in a 2 weeks cooldown.' % name)
+                                          'while in a 2 weeks cooldown.' % detail['name'])
                 return await ctx.channel.send(embed=em)
         # Viallger name differeniation: some villagers have a space char
         # between its names:
@@ -174,8 +174,8 @@ class User(commands.Cog):
         timeslot = await ctx.send(
             f":information_source: Which time slot is the best choice to contact you"
             " if we have to? \n"
-            "NOTE: Please refer to https://time.is/UTC and select your most available"
-            " timeslot in **UTC**.\n"
+            "NOTE: Please refer to https://www.thetimezoneconverter.com/ or https://time.is/UTC\n"
+            " and select your most available timeslot in **UTC**.\n"
             ":sparkles: Slot 1: 00:00 - 03:59 UTC.\n:eight_spoked_asterisk: "
             "Slot 2: 04:00 - 07:59 UTC.\n"
             ":heart: Slot 3: 08:00 - 11:59 UTC.\n:rocket: Slot 4: 12:00 - 15:59 UTC.\n"
@@ -270,12 +270,14 @@ class User(commands.Cog):
                                                  utils.Status.CANCEL.name,
                                                  utils.Status.REJECTED.name):
                         open_app.append(request_id)
-        if len(open_app) == 1:
+        if open_app:
+            # We only allow one application per user per time. It is safe to assume
+            # to return the first element here.
             return open_app[0]
         else:
             # should raise an exception?
             print('something wrong in auto_find: Cannot find a user '
-                  'request or requests are >=2')
+                  'request.')
 
     @commands.command(name='ready', aliases=['rdy'])
     async def ready(self, ctx, req_id=None):
@@ -332,8 +334,9 @@ class User(commands.Cog):
             em = utils.get_embed(color, found)
             await ctx.channel.send(embed=em)
             utils.flush_requestlog(data_dict)
+            user_obj = self.bot.get_user(found_data[req_id]['user_id'])
             await self.send_logs_user('%s is ready to accept a dreamie (%s).' %
-                                      (ctx.message.author.name, dreamie))
+                                      (found_data[req_id]['name'], dreamie))
             await sheet.update_data(found_data)
             staff_lst = found_data[req_id]['staff'].split('#')
             staff_id = discord.utils.get(self.bot.get_all_members(), name=staff_lst[0],
@@ -341,7 +344,7 @@ class User(commands.Cog):
             staff_obj = self.bot.get_user(staff_id)
             staff_dm = staff_obj.dm_channel or await staff_obj.create_dm()
             staff_msg = '%s: %s is ready to accept a dreamie (%s).' % (
-                staff_obj.mention, ctx.message.author.name, dreamie)
+                staff_obj.mention, user_obj.mention, dreamie)
             await staff_dm.send(staff_msg)
             """
             # Setup a channel invitation
