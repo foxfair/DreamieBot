@@ -1,5 +1,6 @@
 '''A collection of utility functions.'''
 # Note: secrets module is in Python 3.6+.
+import datetime
 from enum import Enum
 import json
 import os
@@ -222,3 +223,8 @@ def generate_id(data_dict):
         app_id = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
         if app_id not in data_dict:
             return app_id
+
+
+# Credit to: https://stackoverflow.com/questions/18470627/how-do-i-remove-the-microseconds-from-a-timedelta-object
+def chop_microseconds(delta):
+    return delta - datetime.timedelta(microseconds=delta.microseconds)
