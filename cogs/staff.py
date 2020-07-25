@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 LOG_CHANNEL = os.getenv('LOG_CHANNEL')
-
+TIME_FORMAT = os.getenv('TIME_FORMAT')
 is_staff = checks.is_staff()
 
 
@@ -71,12 +71,14 @@ class Staff(commands.Cog):
         staff = None
         found = False
         found_data = dict()
+        rejected = dict()
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
                 found = True
                 staff = ctx.message.author.name
                 staff += '#' + ctx.message.author.discriminator
-                user_id = int(details['user_id'])
+                staff_obj = self.bot.get_user(ctx.message.author.id)
+                user_id = details['user_id']
                 if str(denied) == 'denied':
                     # The message is sent back to a user.
                     message = ':disappointed_relieved: Thank you for submitting an application for '
@@ -96,10 +98,10 @@ class Staff(commands.Cog):
                     details['status'] = utils.Status.REJECTED.name
                     # mark a last_modified timestring
                     tm = time.localtime(time.time())
-                    timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                    timestring = time.strftime(TIME_FORMAT, tm)
                     details['last_modified'] = timestring
                     details['staff'] = staff
-
+                    rejected[request_id] = details
                     # send to log channel
                     await self.send_logs(server_message)
                     # send a DM to note the user.
@@ -113,7 +115,7 @@ class Staff(commands.Cog):
                     details['status'] = utils.Status.APPROVED.name
                     # mark a last_modified timestring
                     tm = time.localtime(time.time())
-                    timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                    timestring = time.strftime(TIME_FORMAT, tm)
                     details['last_modified'] = timestring
                     details['staff'] = staff
                     # send to log channel
@@ -123,24 +125,25 @@ class Staff(commands.Cog):
                     if user_id:
                         user = self.bot.get_user(user_id)
                         dm_chan = user.dm_channel or await user.create_dm()
-                        await dm_chan.send(
-                            'Your application **%s** is approved by a staff (_%s_).'
-                            % (req_id, staff))
-                        await dm_chan.send(
-                            'Please use the **~status** command to check current status.'
-                        )
+                        user_msg = ('Your application **{}** is approved by a '
+                                    'staff (_{}_).\nPlease use the `~status` '
+                                    'command to check current status.'.format(
+                                        req_id, staff))
+                        await dm_chan.send(user_msg)
                 # Save changes to found_data
                 found_data[request_id] = details
         if not found:
             message = 'Cannot find application **%s**' % req_id
             await ctx.send(message)
             # send to log channel
-            await self.send_logs(message)
-            return
+            return await self.send_logs(message)
         # Write changes back.
         utils.flush_requestlog(data_dict)
         time.sleep(1)
         await sheet.update_data(found_data)
+        if rejected:
+            for k, _ in rejected.items():
+                await sheet.archive_column(k)
 
     @commands.command(name='found', aliases=['fnd'])
     @is_staff
@@ -150,6 +153,7 @@ class Staff(commands.Cog):
         user_id = 0
         staff = ctx.message.author.name
         staff += '#' + ctx.message.author.discriminator
+        staff_obj = self.bot.get_user(ctx.message.author.id)
         dreamie = ''
         found_data = dict()
         for request_id, details in list(data_dict.items()):
@@ -162,10 +166,10 @@ class Staff(commands.Cog):
                 dreamie = dreamie.split(',')[0]
                 # mark a last_modified timestring
                 tm = time.localtime(time.time())
-                timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                timestring = time.strftime(TIME_FORMAT, tm)
                 details['last_modified'] = timestring
                 details['staff'] = staff
-                user_id = int(details['user_id'])
+                user_id = details['user_id']
                 found_data[request_id] = details
 
         utils.flush_requestlog(data_dict)
@@ -187,8 +191,8 @@ class Staff(commands.Cog):
                        'will expire automatically. Your villager will not '
                        'be held for you and will be passed to the next '
                        'applicant.\n')
-            await dm_chan.send(message % (user.mention, dreamie, staff, req_id)
-                               )
+            await dm_chan.send(message % (user.mention, dreamie,
+                                          staff, req_id))
 
     @commands.command(name='close', aliases=['cls'])
     @is_staff
@@ -198,6 +202,7 @@ class Staff(commands.Cog):
         user_id = 0
         staff = ctx.message.author.name
         staff += '#' + ctx.message.author.discriminator
+        staff_obj = self.bot.get_user(ctx.message.author.id)
         villager = None
         found_data = dict()
         for request_id, details in list(data_dict.items()):
@@ -208,10 +213,10 @@ class Staff(commands.Cog):
                 details['status'] = utils.Status.CLOSED.name
                 # mark a last_modified timestring
                 tm = time.localtime(time.time())
-                timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                timestring = time.strftime(TIME_FORMAT, tm)
                 details['last_modified'] = timestring
                 details['staff'] = staff
-                user_id = int(details['user_id'])
+                user_id = details['user_id']
                 found_data[request_id] = details
 
         utils.flush_requestlog(data_dict)
@@ -245,6 +250,7 @@ class Staff(commands.Cog):
         # https://discordpy.readthedocs.io/en/latest/ext/tasks/
         staff = ctx.message.author.name
         staff += '#' + ctx.message.author.discriminator
+        staff_obj = self.bot.get_user(ctx.message.author.id)
         # Setup a Flow controller.
         flow = request.Flow(self.bot, ctx)
         # Flip the bot status.
@@ -306,6 +312,7 @@ class Staff(commands.Cog):
         user_id = 0
         staff = ctx.message.author.name
         staff += '#' + ctx.message.author.discriminator
+        staff_obj = self.bot.get_user(ctx.message.author.id)
         found_data = dict()
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
@@ -313,11 +320,11 @@ class Staff(commands.Cog):
                 details['status'] = utils.Status.PROCESSING.name
                 # mark a last_modified timestring
                 tm = time.localtime(time.time())
-                timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                timestring = time.strftime(TIME_FORMAT, tm)
                 details['last_modified'] = timestring
                 details['staff'] = staff
                 found_data[request_id] = details
-                user_id = int(details['user_id'])
+                user_id = details['user_id']
                 name = details['name']
                 break
         # Send a note back to the staff.
@@ -345,10 +352,13 @@ class Staff(commands.Cog):
             await dm_chan.send(user_msg % staff)
 
     @commands.command(name='search', aliases=['sea'], usage=(
-            '<summary|status|name>'), hidden=True)
+            '<summary|status|name>. status could be any of pending, approved, '
+            'reject, processing, found, ready, close or cancel. name could be '
+            'either a full name with tag like "foxfair#2155" or just "foxfair"'
+            ' and search all applications by this name in return.'), hidden=True)
     @is_staff
     async def search(self, ctx, *input_args):
-        '''Search for a name, status criteria or summary in all applications.'''
+        '''Search for a summary, status or name in all applications.'''
         data_dict = utils.open_requestlog()
         user_id = 0
         # Since this function is shared with a background task.
@@ -390,9 +400,17 @@ class Staff(commands.Cog):
                     villager = details['villager'].split(', ')[0]
                     tmp_dict[request_id] = '**{}** looks for _{}_'.format(
                         details['name'], villager)
-            if not ctx:
+            # Prepare for background reporting task.
+            if not ctx and 'background' in all_args:
                 return tmp_dict
-
+            if not ctx and 'countdown' in all_args:
+                # For coutndown background tasks, we need to return a raw
+                # details dict.
+                raw_dict = dict()
+                for request_id, details in list(data_dict.items()):
+                    if target == details['status']:
+                        raw_dict[request_id] = details
+                return raw_dict
             title = '_%s_ Application' % target.capitalize()
             if len(tmp_dict) > 1:
                 title += 's: *%d*' % len(tmp_dict)
@@ -406,13 +424,31 @@ class Staff(commands.Cog):
                 return await ctx.send(embed=embed)
             else:
                 return await ctx.send('Found nothing for status=%s' % target)
-        elif 'name' in all_args[0]:
-            # Search by user, could be multiple names.
-            targets = all_args[1:]
-            for name in targets:
-                pattern = re.compile(r'%s' % name)
         else:
-            print('nothing! all_args: %s' % all_args)
+            # Search by user, could be multiple names.
+            # fix the guild if nothing found.
+            # 704875142496649256 is Beyond Stalks.
+            # guild_id = ctx.message.guild if ctx.message.guild else '704875142496649256'
+            tmp_list = []
+            for target in all_args:
+                title = 'Search By Name: %s' % target
+                found = dict()
+                # user_id = discord.utils.get(client.get_all_members(), name=name_list[0],
+                #                            discriminator=name_list[1]).id
+                # pattern = re.search(target, details['name'], re.IGNORECASE)
+                for request_id, details in list(data_dict.items()):
+                    if re.search(target, details['name'], re.IGNORECASE):
+                        villager = details['villager'].split(', ')[0]
+                        status = 'Status: {}'.format(details['status'].capitalize())
+                        found[request_id] = '**{}**\n{}'.format(villager, status)
+                if found:
+                    embed = discord.Embed(title=title)
+                    embed.color = utils.random_color()
+                    for k, v in found.items():
+                        embed.add_field(name=k, value=v, inline=True)
+                    return await ctx.send(embed=embed)
+                else:
+                    return await ctx.send('Found nothing for this name: %s' % target)
     
     @commands.command(name='archive', aliases=['ar'], hidden=True,
                       usage='<req_id> to hide a row of the application id.'
