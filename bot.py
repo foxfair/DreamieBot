@@ -26,7 +26,7 @@ INVITE_URL = 'https://discord.com/api/oauth2/authorize?client_id=725436099018883
 BOT_AVAIL_STATUS = 'Fostering Dreamies'
 
 # If this prefix gets changed, change it in on_message() as well.
-BOT_PREFIX = {'user': '~', 'admin': '+'}
+BOT_PREFIX = {'user': '~', 'admin': '&'}
 
 # The Dreamie Bot starts here.
 bot = commands.Bot(command_prefix=BOT_PREFIX.values(),
@@ -124,15 +124,19 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    if message.content.startswith('~'):
-        if isinstance(message.channel, discord.DMChannel):
-            await bot.process_commands(message)
-        else:
-            await message.channel.send('Only accept bot commands in DMs.')
-    if message.content.startswith(
-            '+') or message.channel.id in auth_config.SEND_MSG_CHANNELS:
+    if message.content.startswith(BOT_PREFIX['admin']) and (
+            message.channel.id in auth_config.SEND_MSG_CHANNELS):
         # Staff has priviledges.
-        await bot.process_commands(message)
+        return await bot.process_commands(message)
+    if message.content.startswith(BOT_PREFIX['user']) or (
+        message.content.startswith(BOT_PREFIX['admin'])):
+        if isinstance(message.channel, discord.DMChannel):
+            return await bot.process_commands(message)
+        else:
+            user_id = message.author.id
+            user = bot.get_user(user_id)
+            dm_chan = user.dm_channel or await user.create_dm()
+            return await dm_chan.send('Only accept bot commands in DMs.')
 
 
 @bot.event
