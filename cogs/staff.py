@@ -44,7 +44,7 @@ class Staff(commands.Cog):
         data_dict = utils.open_requestlog()
         found = ""
         for request_id, details in list(data_dict.items()):
-            if not req_id or str(request_id) == req_id:
+            if not req_id or str(request_id).lower() == str(req_id).lower():
                 # all requests.
                 found += 'application_id: %s\n' % request_id
                 found += utils.printadict(details)
