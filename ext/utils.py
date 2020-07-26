@@ -1,9 +1,12 @@
 '''A collection of utility functions.'''
-
+# Note: secrets module is in Python 3.6+.
+import datetime
 from enum import Enum
 import json
 import os
 import random
+import secrets
+import string
 import time
 
 import discord
@@ -34,12 +37,14 @@ class Status(Enum):
     # A user indicates that there is an open plot, will be ready to welcome a dreamie home.
     READY = 5
 
-    # An application is cancelled before completion. It is either cancelled by a user or a staff.
+    # An application is cancelled before completion. It is cancelled by a user.
     CANCEL = 6
 
     # An application has been reviewed then approved.
     APPROVED = 7
 
+    # An application is rejected due to lack of community activities.
+    REJECTED = 8
 
 def open_requestlog():
     # Open request log file.
@@ -95,13 +100,12 @@ def form_text(details):
     return text
 
 
-def genreport(data_dict, criterias=None):
+def genreport(data_dict, criteria=None):
     '''Generate a search/summary report.'''
     data = data_dict.copy()
     table_dict = dict()
     total = len(data)
-    approved = cancel = closed = processing = 0
-    if not criterias:
+    if not criteria:
         # summary report
         all_status = [str(e.name) for e in Status]
         tmp = dict()
@@ -120,9 +124,9 @@ def genreport(data_dict, criterias=None):
             table_dict[status] = ratio_text
         # TODO: deal with time delta.
     else:
-        # search by criterias and generate a report.
+        # search by criteria and generate a report.
         for request_id, details in data.items():
-            if criterias in str(details['status']):
+            if criteria in str(details['status']):
                 table_dict[request_id] = form_text(details)
     return table_dict
 
@@ -132,10 +136,10 @@ def get_embed(color, text, title=None):
     # For a finished adoption request. Usually it will be closed.
     if color == 'green':
         colour = discord.Colour.green()
-    # For fostering.
+    # For found applications while fostering.
     if color == 'orange':
         colour = discord.Colour.dark_orange()
-    # For any system warning/error, and rejected applications.
+    # For rejected applications, and any system warning/error.
     if color == 'red':
         colour = discord.Colour.red()
     # Informational, and the default status color.
@@ -147,10 +151,10 @@ def get_embed(color, text, title=None):
     # Staff special
     if color == 'purple':
         colour = discord.Colour.purple()
-
+    # The application is ready.
     if color == 'dark_green':
         colour = discord.Colour.dark_green()
-
+    # approved applications.
     if color == 'skyblue':
         colour = discord.Colour.from_rgb(0,191,255)
 
@@ -172,22 +176,21 @@ def status_color(data):
     # FOUND = orange
     if data['status'] == Status.FOUND.name:
         color = 'orange'
-
-    # CANCEL = red
+    # CANCEL = red ?
     if data['status'] == Status.CANCEL.name:
         color = 'red'
-
-    # READY, CLOSED = green, dark_green
+    # READY = green
     if data['status'] == Status.READY.name:
         color = 'green'
-
+    # CLOSED = darkgreen
     if data['status'] == Status.CLOSED.name:
         color = 'dark_green'
-
     # APPROVED = blue
     if data['status'] == Status.APPROVED.name:
         color = 'skyblue'
-
+    # REJECTED= red
+    if data['status'] == Status.REJECTED.name:
+        color = 'red'
     return color
 
 
@@ -211,3 +214,17 @@ def random_color():
     color = int(color[1:], 16)
     color = discord.Color(value=color)
     return color
+
+
+def generate_id(data_dict):
+    '''Use a secure way to generate a non-conflict application id.'''
+    app_id = None
+    while True:
+        app_id = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(6))
+        if app_id not in data_dict:
+            return app_id
+
+
+# Credit to: https://stackoverflow.com/questions/18470627/how-do-i-remove-the-microseconds-from-a-timedelta-object
+def chop_microseconds(delta):
+    return delta - datetime.timedelta(microseconds=delta.microseconds)

@@ -24,13 +24,16 @@ def precheck(user, villager):
         # - The user has too many requests. See the default in REQUEST_LIMIT=1.
         message = ''
         villagers = []
+        last_rejected = []
         for request_id, details in list(data_dict.items()):
             if details['name'] == str(user) and (details['villager'] == villager):
                 message = 'You have requested a duplicated villager, check your application with ~status.'
                 return message
             for k, v in list(details.items()):
-                if (str(k) == 'name' and user in v and (details['status'] not in (utils.Status.CLOSED.name, utils.Status.CANCEL.name))):
+                if (str(k) == 'name' and user in v and (details['status'] not in (
+                        utils.Status.CLOSED.name, utils.Status.CANCEL.name, utils.Status.REJECTED.name))):
                     villagers.append(str(details['villager']))
+                # if (str(k) == 'name' and user in v and (details['status']
         # Use re.match to search pattern here.
         pattern = re.compile(str(villager).lower())
         for v in villagers:

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 import time
 
 import discord
@@ -15,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 LOG_CHANNEL = os.getenv('LOG_CHANNEL')
-
+TIME_FORMAT = os.getenv('TIME_FORMAT')
 is_staff = checks.is_staff()
 
 
@@ -43,7 +44,7 @@ class Staff(commands.Cog):
         data_dict = utils.open_requestlog()
         found = ""
         for request_id, details in list(data_dict.items()):
-            if not req_id or str(request_id) == req_id:
+            if not req_id or str(request_id).lower() == str(req_id).lower():
                 # all requests.
                 found += 'application_id: %s\n' % request_id
                 found += utils.printadict(details)
@@ -70,12 +71,14 @@ class Staff(commands.Cog):
         staff = None
         found = False
         found_data = dict()
+        rejected = dict()
         for request_id, details in list(data_dict.items()):
-            if int(request_id) == int(req_id):
+            if str(request_id) == str(req_id):
                 found = True
                 staff = ctx.message.author.name
                 staff += '#' + ctx.message.author.discriminator
-                user_id = int(details['user_id'])
+                staff_obj = self.bot.get_user(ctx.message.author.id)
+                user_id = details['user_id']
                 if str(denied) == 'denied':
                     # The message is sent back to a user.
                     message = ':disappointed_relieved: Thank you for submitting an application for '
@@ -92,15 +95,13 @@ class Staff(commands.Cog):
                     # A server message for reference.
                     server_message = '%s denied an application: %s' % (staff,
                                                                        req_id)
-                    await ctx.send(server_message)
-
-                    details['status'] = utils.Status.CANCEL.name
+                    details['status'] = utils.Status.REJECTED.name
                     # mark a last_modified timestring
                     tm = time.localtime(time.time())
-                    timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                    timestring = time.strftime(TIME_FORMAT, tm)
                     details['last_modified'] = timestring
                     details['staff'] = staff
-
+                    rejected[request_id] = details
                     # send to log channel
                     await self.send_logs(server_message)
                     # send a DM to note the user.
@@ -114,7 +115,7 @@ class Staff(commands.Cog):
                     details['status'] = utils.Status.APPROVED.name
                     # mark a last_modified timestring
                     tm = time.localtime(time.time())
-                    timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                    timestring = time.strftime(TIME_FORMAT, tm)
                     details['last_modified'] = timestring
                     details['staff'] = staff
                     # send to log channel
@@ -124,24 +125,25 @@ class Staff(commands.Cog):
                     if user_id:
                         user = self.bot.get_user(user_id)
                         dm_chan = user.dm_channel or await user.create_dm()
-                        await dm_chan.send(
-                            'Your application **%s** is approved by a staff (_%s_).'
-                            % (req_id, staff))
-                        await dm_chan.send(
-                            'Please use the **~status** command to check current status.'
-                        )
+                        user_msg = ('Your application **{}** is approved by a '
+                                    'staff (_{}_).\nPlease use the `~status` '
+                                    'command to check current status.'.format(
+                                        req_id, staff))
+                        await dm_chan.send(user_msg)
                 # Save changes to found_data
                 found_data[request_id] = details
         if not found:
             message = 'Cannot find application **%s**' % req_id
             await ctx.send(message)
             # send to log channel
-            await self.send_logs(message)
-            return
-
-# Write changes back.
+            return await self.send_logs(message)
+        # Write changes back.
         utils.flush_requestlog(data_dict)
-        sheet.update_data(found_data)
+        time.sleep(1)
+        await sheet.update_data(found_data)
+        if rejected:
+            for k, _ in rejected.items():
+                await sheet.archive_column(k)
 
     @commands.command(name='found', aliases=['fnd'])
     @is_staff
@@ -151,6 +153,7 @@ class Staff(commands.Cog):
         user_id = 0
         staff = ctx.message.author.name
         staff += '#' + ctx.message.author.discriminator
+        staff_obj = self.bot.get_user(ctx.message.author.id)
         dreamie = ''
         found_data = dict()
         for request_id, details in list(data_dict.items()):
@@ -163,14 +166,15 @@ class Staff(commands.Cog):
                 dreamie = dreamie.split(',')[0]
                 # mark a last_modified timestring
                 tm = time.localtime(time.time())
-                timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                timestring = time.strftime(TIME_FORMAT, tm)
                 details['last_modified'] = timestring
                 details['staff'] = staff
-                user_id = int(details['user_id'])
+                user_id = details['user_id']
                 found_data[request_id] = details
 
         utils.flush_requestlog(data_dict)
-        sheet.update_data(found_data)
+        time.sleep(1)
+        await sheet.update_data(found_data)
         # send to log channel
         await self.send_logs('%s found a requested villager: %s' %
                              (staff, dreamie))
@@ -187,8 +191,8 @@ class Staff(commands.Cog):
                        'will expire automatically. Your villager will not '
                        'be held for you and will be passed to the next '
                        'applicant.\n')
-            await dm_chan.send(message % (user.mention, dreamie, staff, req_id)
-                               )
+            await dm_chan.send(message % (user.mention, dreamie,
+                                          staff, req_id))
 
     @commands.command(name='close', aliases=['cls'])
     @is_staff
@@ -198,6 +202,7 @@ class Staff(commands.Cog):
         user_id = 0
         staff = ctx.message.author.name
         staff += '#' + ctx.message.author.discriminator
+        staff_obj = self.bot.get_user(ctx.message.author.id)
         villager = None
         found_data = dict()
         for request_id, details in list(data_dict.items()):
@@ -208,14 +213,15 @@ class Staff(commands.Cog):
                 details['status'] = utils.Status.CLOSED.name
                 # mark a last_modified timestring
                 tm = time.localtime(time.time())
-                timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                timestring = time.strftime(TIME_FORMAT, tm)
                 details['last_modified'] = timestring
                 details['staff'] = staff
-                user_id = int(details['user_id'])
+                user_id = details['user_id']
                 found_data[request_id] = details
 
         utils.flush_requestlog(data_dict)
-        sheet.update_data(found_data)
+        time.sleep(1)
+        await sheet.update_data(found_data)
         # Then hide the close row.
         await sheet.archive_column(req_id)
 
@@ -244,6 +250,7 @@ class Staff(commands.Cog):
         # https://discordpy.readthedocs.io/en/latest/ext/tasks/
         staff = ctx.message.author.name
         staff += '#' + ctx.message.author.discriminator
+        staff_obj = self.bot.get_user(ctx.message.author.id)
         # Setup a Flow controller.
         flow = request.Flow(self.bot, ctx)
         # Flip the bot status.
@@ -298,12 +305,14 @@ class Staff(commands.Cog):
                              (name, user_id, channel_id, permission))
 
     @commands.command(name='claim')
+    @is_staff
     async def claim(self, ctx, req_id):
         '''Claim an application to move its status to PROCESSING.'''
         data_dict = utils.open_requestlog()
         user_id = 0
         staff = ctx.message.author.name
         staff += '#' + ctx.message.author.discriminator
+        staff_obj = self.bot.get_user(ctx.message.author.id)
         found_data = dict()
         for request_id, details in list(data_dict.items()):
             if str(request_id) == str(req_id):
@@ -311,34 +320,154 @@ class Staff(commands.Cog):
                 details['status'] = utils.Status.PROCESSING.name
                 # mark a last_modified timestring
                 tm = time.localtime(time.time())
-                timestring = time.strftime("%Y-%m-%d %I:%M:%S%p %Z", tm)
+                timestring = time.strftime(TIME_FORMAT, tm)
                 details['last_modified'] = timestring
+                details['staff'] = staff
                 found_data[request_id] = details
-                user_id = int(details['user_id'])
+                user_id = details['user_id']
                 name = details['name']
                 break
         # Send a note back to the staff.
         staff_msg = ('You claimed an application: %s (%s looks for %s).')
         await ctx.send(staff_msg % (req_id, name, villager))
         utils.flush_requestlog(data_dict)
-        sheet.update_data(found_data)
+        time.sleep(1)
+        await sheet.update_data(found_data)
         # send to log channel
         await self.send_logs('%s claim an application: %s' % (staff, req_id))
         # send a DM to note the user.
         if user_id:
             user = self.bot.get_user(user_id)
             dm_chan = user.dm_channel or await user.create_dm()
-
             user_msg = (
-                'Thank you for applying to the Dream Villager Adoption Program. We have approved your application and a staff member of our team, _%s_, has begun looking for your dream villager.\n'
-                'Please monitor your DMs for updates. You can use **~status** command to check the latest status.\n'
-                'If you have any questions, please check the FAQ in _#villager-adoption-program, or ask questions in #villager-trading_, or ping us **@adoptionteam**.'
+                'Thank you for applying to the Dream Villager Adoption Program.'
+                ' We have approved your application and a staff member of our '
+                'team, _%s_, has begun looking for your dream villager.\n'
+                'Please monitor your DMs for updates. You can use **~status** '
+                'command to check the latest status.\n'
+                'If you have any questions, please check the FAQ in '
+                '_#villager-adoption-program, or ask questions in '
+                '#villager-trading_, or ping us **@adoptionteam**.'
             )
             await dm_chan.send(user_msg % staff)
 
-    # command: search
-
-    # command: archive
+    @commands.command(name='search', aliases=['sea'], usage=(
+            '<summary|status|name>. status could be any of pending, approved, '
+            'reject, processing, found, ready, close or cancel. name could be '
+            'either a full name with tag like "foxfair#2155" or just "foxfair"'
+            ' and search all applications by this name in return.'), hidden=True)
+    @is_staff
+    async def search(self, ctx, *input_args):
+        '''Search for a summary, status or name in all applications.'''
+        data_dict = utils.open_requestlog()
+        user_id = 0
+        # Since this function is shared with a background task.
+        # When ctx = None, it will not send the result messages to the user,
+        # instead, it returns a dictionary.
+        all_args = [a.lower() for a in list(input_args)]
+        all_status = [t.name for t in utils.Status]
+        tmp_dict = dict()
+        target = all_args[0]
+        if target == 'summary':
+            total = len(data_dict)
+            # We don't care about closed, cancel or rejected applications.
+            for status in all_status:  # expected_status:
+                tmp_dict[status] = 0
+                for _, details in list(data_dict.items()):
+                    if status == details['status']:
+                        tmp_dict[status] += 1
+                if tmp_dict[status]:
+                    ratio = '{} ({:.3f}{})'.format(tmp_dict[status],
+                            (tmp_dict[status]/total*100), '%')
+                    tmp_dict[status] = ratio
+                else:
+                    tmp_dict[status] = '0 (------)'
+            if not ctx:
+                return tmp_dict
+            embed = discord.Embed()
+            embed.title = 'Applications Summary:'
+            embed.color = utils.random_color()
+            embed.description = 'Total Applications: %d' % total
+            for k, v in tmp_dict.items():
+                embed.add_field(name=k, value=v, inline=True)
+            return await ctx.send(embed=embed)
+        elif target.upper() in all_status:
+            # Search by status
+            target = target.upper()
+            tmp_dict = dict()
+            for request_id, details in list(data_dict.items()):
+                if target == details['status']:
+                    villager = details['villager'].split(', ')[0]
+                    tmp_dict[request_id] = '**{}** looks for _{}_'.format(
+                        details['name'], villager)
+            # Prepare for background reporting task.
+            if not ctx and 'background' in all_args:
+                return tmp_dict
+            if not ctx and 'countdown' in all_args:
+                # For coutndown background tasks, we need to return a raw
+                # details dict.
+                raw_dict = dict()
+                for request_id, details in list(data_dict.items()):
+                    if target == details['status']:
+                        raw_dict[request_id] = details
+                return raw_dict
+            title = '_%s_ Application' % target.capitalize()
+            if len(tmp_dict) > 1:
+                title += 's: *%d*' % len(tmp_dict)
+            else:
+                title += ': *%d*' % len(tmp_dict)
+            if tmp_dict:
+                embed = discord.Embed(title=title)
+                embed.color = utils.random_color()
+                for k, v in tmp_dict.items():
+                    embed.add_field(name=k, value=v, inline=True)
+                return await ctx.send(embed=embed)
+            else:
+                return await ctx.send('Found nothing for status=%s' % target)
+        else:
+            # Search by user, could be multiple names.
+            # fix the guild if nothing found.
+            # 704875142496649256 is Beyond Stalks.
+            # guild_id = ctx.message.guild if ctx.message.guild else '704875142496649256'
+            tmp_list = []
+            for target in all_args:
+                title = 'Search By Name: %s' % target
+                found = dict()
+                # user_id = discord.utils.get(client.get_all_members(), name=name_list[0],
+                #                            discriminator=name_list[1]).id
+                # pattern = re.search(target, details['name'], re.IGNORECASE)
+                for request_id, details in list(data_dict.items()):
+                    if re.search(target, details['name'], re.IGNORECASE):
+                        villager = details['villager'].split(', ')[0]
+                        status = 'Status: {}'.format(details['status'].capitalize())
+                        found[request_id] = '**{}**\n{}'.format(villager, status)
+                if found:
+                    embed = discord.Embed(title=title)
+                    embed.color = utils.random_color()
+                    for k, v in found.items():
+                        embed.add_field(name=k, value=v, inline=True)
+                    return await ctx.send(embed=embed)
+                else:
+                    return await ctx.send('Found nothing for this name: %s' % target)
+    
+    @commands.command(name='archive', aliases=['ar'], hidden=True,
+                      usage='<req_id> to hide a row of the application id.'
+                            'Use anything after <req_id> will toggle and '
+                            'unhide its row')
+    @is_staff
+    async def archive(self, ctx, req_id, *input_args):
+        '''Archive and hide a row in the sheet by an application ID.'''
+        data_dict = utils.open_requestlog()
+        toggle = list(input_args)
+        if not toggle:
+            # always hide
+            await sheet.archive_column(req_id)
+        else:
+            # unhide
+            await sheet.archive_column(req_id, False)
+        server_msg = 'DreamieBot archived a row of request_id %s in the sheet.'
+        # send to log channel
+        return await self.send_logs(server_msg % (req_id))
 
 
 def setup(bot):
