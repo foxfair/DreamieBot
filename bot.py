@@ -98,6 +98,7 @@ def load_extensions(cogs, path='cogs.'):
                 bot.add_listener(member, name)
         try:
             bot.load_extension(f'{path}{cog}')
+            logger.info('Loaded extension: %s', cog)
         except Exception as e:
             print(f'LoadError: {cog}\n{type(e).__name__}: {e}')
             logger.warning('LoadError: %s', str(e))
@@ -121,22 +122,30 @@ async def on_ready():
     for guild in bot.guilds:
         logger.info('Joined this guild: %s(%d)' % (guild.name, guild.id))
 
-
 @bot.event
 async def on_message(message):
-    if message.content.startswith(BOT_PREFIX['admin']) and (
+    # fine-grain checking of messages, drop the first char of conent.
+    # Only proceed to process_messages if content matches the command's
+    # name exactly.
+    commands_aliases = [c.name for c in bot.commands]
+    for c in bot.commands:
+        if c.aliases:
+                commands_aliases.extend(c.aliases)
+    first_word = message.content[1:].split(' ')[0]
+    if first_word in commands_aliases:
+        if message.content.startswith(BOT_PREFIX['admin']) and (
             message.channel.id in auth_config.SEND_MSG_CHANNELS):
-        # Staff has priviledges.
-        return await bot.process_commands(message)
-    if message.content.startswith(BOT_PREFIX['user']) or (
-        message.content.startswith(BOT_PREFIX['admin'])):
-        if isinstance(message.channel, discord.DMChannel):
+            # Staff has priviledges.
             return await bot.process_commands(message)
-        else:
-            user_id = message.author.id
-            user = bot.get_user(user_id)
-            dm_chan = user.dm_channel or await user.create_dm()
-            return await dm_chan.send('Only accept bot commands in DMs.')
+        if message.content.startswith(BOT_PREFIX['user']) or (
+            message.content.startswith(BOT_PREFIX['admin'])):
+            if isinstance(message.channel, discord.DMChannel):
+                return await bot.process_commands(message)
+            else:
+                user_id = message.author.id
+                user = bot.get_user(user_id)
+                dm_chan = user.dm_channel or await user.create_dm()
+                return await dm_chan.send('Only accept bot commands in DMs.')
 
 
 @bot.event
