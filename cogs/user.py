@@ -19,7 +19,8 @@ load_dotenv()
 RECORD_FILE = os.getenv('RECORD_FILE')
 LOG_CHANNEL = os.getenv('LOG_CHANNEL')
 TIME_FORMAT = os.getenv('TIME_FORMAT')
-
+# A cooldown timer for re-applying after last denied applications
+COOLDOWN_DAYS=7
 
 class User(commands.Cog):
     '''User commands to maintain a villager application.'''
@@ -71,14 +72,15 @@ class User(commands.Cog):
             # Fixed the period to 2 weeks.
             then_ts = time.strptime(detail['last_modified'], TIME_FORMAT)
             then_dt = datetime.datetime.fromtimestamp(time.mktime(then_ts))
-            period = datetime.timedelta(days=14)
+            period = datetime.timedelta(days=COOLDOWN_DAYS)
             if (current-then_dt) < period:
                 rejected_msg = ('Sorry, your previous application was closed at '
-                                '%s within a two weeks cooldown.\nPlease come back'
-                                ' and reapply later.' % detail['last_modified'])
+                                '%s within a cooldown perdiod of %d days.\n'
+                                'Please come back and reapply later.'.format(
+                                    detail['last_modified'], COOLDOWN_DAYS))
                 em = utils.get_embed('red', rejected_msg, title='Still In Cooldown')
                 await self.send_logs_user('%s attempted to re-apply a dreamie '
-                                          'while in a 2 weeks cooldown.' % detail['name'])
+                                          'while in a cooldown period.' % detail['name'])
                 return await ctx.channel.send(embed=em)
         # Viallger name differeniation: some villagers have a space char
         # between its names:
@@ -216,7 +218,6 @@ class User(commands.Cog):
             await ctx.send(
                 "%s Please take a note of your application ID:\n**%s**" %
                 (user_obj.mention, request_id))
-            time.sleep(1)
             # Add a default status.
             data += u"Status: {}".format(utils.Status.PENDING.name)
             details['status'] = utils.Status.PENDING.name
@@ -227,6 +228,7 @@ class User(commands.Cog):
             with open(RECORD_FILE, mode="a") as f:
                 json.dump(data_dict, f, indent=None)
                 f.write('\n')
+            time.sleep(1)
             await sheet.update_data(data_dict)
             await self.send_logs_user('%s requested a dreamie (%s) at %s' %
                                       (name, villager.capitalize(), timestring)
@@ -294,8 +296,10 @@ class User(commands.Cog):
         # req_id = none and there is an open application of this user.
         if not req_id:
             req_id = self.auto_find(data_dict, ctx.message.author.name)
+        else:
+            req_id = req_id.upper()
         for request_id, details in list(data_dict.items()):
-            if str(request_id) == str(req_id):
+            if request_id == req_id:
                 # user can only mark their own request.
                 for k, v in list(details.items()):
                     if k == u'name' and ctx.message.author.name in v:
@@ -346,41 +350,6 @@ class User(commands.Cog):
             staff_msg = '%s: %s is ready to accept a dreamie (%s).' % (
                 staff_obj.mention, user_obj.mention, dreamie)
             await staff_dm.send(staff_msg)
-            """
-            # Setup a channel invitation
-            user_obj = self.bot.get_user(ctx.message.author.id)
-            flow = request.Flow(self.bot, ctx)
-            are_you_sure = await ctx.send(
-                f":information_source: We are going to invite you to a group"
-                f" channel and our staff will comminucate with you there.\n"
-                f"Please confirm YES/NO to accept/deny the invitation:\n")
-
-            reaction = await flow.get_yes_no_reaction_confirm(are_you_sure, 200)
-            if reaction is None:
-                return
-            if not reaction:
-                em = utils.get_embed('red', 'Aborted joining the group channel.')
-                return await ctx.channel.send(embed=em)
-            elif reaction:
-                # invite both user and staff to a group channel.
-                title = '%s-%s' % (req_id, dreamie)
-                # await group_chan.add_recipients([staff_obj, user_obj])
-                #----------------- for testing, using FD (Fox's DevServer)
-                guild = self.bot.get_guild(725438501709152419)
-                overwrites = {
-                    # so its a secret channel.
-                    guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                    guild.me: discord.PermissionOverwrite(read_messages=True),
-                    guild.me: discord.PermissionOverwrite(create_instant_invite=True)
-                }
-                chan = await guild.create_text_channel(name=title, overwrites=overwrites)
-                inv = await chan.create_invite(reason="please join this group channel for your application.")
-                await ctx.send('Join the channel by this invitation link:\n%s' % inv)
-
-                staff_dm = staff_obj.dm_channel or await staff_obj.create_dm()
-                await staff_dm.send('%s Join this channel for a ready application with %s:\n%s' % (
-                    staff_obj.mention, user_obj.name, inv))
-            """
 
     @commands.command(name='cancel', aliases=['can'])
     async def cancel(self, ctx, req_id=None):
@@ -396,8 +365,10 @@ class User(commands.Cog):
         # req_id = none and there is an open application of this user.
         if not req_id:
             req_id = self.auto_find(data_dict, ctx.message.author.name)
+        else:
+            req_id = req_id.upper()
         for request_id, details in list(data_dict.items()):
-            if str(request_id) == str(req_id):
+            if request_id == req_id:
                 # user can only cancel their own request.
                 for k, v in list(details.items()):
                     if k == u'name' and ctx.message.author.name in v:
@@ -437,7 +408,10 @@ class User(commands.Cog):
                                       (req_id, ctx.message.author.name))
             await sheet.update_data(found_data)
             # Then hide the close row.
-            await sheet.archive_column(req_id)
+            msg = ('DreamieBot archived the row of the application %s because '
+                   'of the applicant cancelled it.' % req_id)
+            await self.send_logs_user(msg)
+            return await sheet.archive_column(req_id)
 
 
 def setup(bot):
