@@ -35,8 +35,8 @@ class Background(commands.Cog):
         # For testing, lets just spam foxfair.
         user = self.bot.get_user(self.bot.owner_id)
         dm_chan = user.dm_channel or await user.create_dm()
-        # Send message to #bot-logs channel.
-        # chan = self.bot.get_channel(auth_config.SEND_MSG_CHANNELS[0])
+        # Send message to #villager-adption-team channel.
+        team_chan = self.bot.get_channel(auth_config.SEND_MSG_CHANNELS[1])
         staff_cog = self.bot.get_cog('Staff')
         for status in ('pending', 'found', 'approved', 'ready', 'processing'):
             report = await staff_cog.search(None, status, 'background')
@@ -58,7 +58,7 @@ class Background(commands.Cog):
                         status]:
                     self.last_status[status] = report
                     await dm_chan.send(embed=embed)
-                    # await chan.send(embed=embed)
+                    await team_chan.send(embed=embed)
         # To guarantee the first task will monitor this 'countdown' task.
         self.loop_counter += 1
         if (self.loop_counter % 4) == 0:
@@ -66,9 +66,6 @@ class Background(commands.Cog):
             report = await staff_cog.search(None, status, 'countdown')
             if report:
                 for req_id, details in report.items():
-                    # TODO: test only.
-                    # if 'foxfair' not in details['name']:
-                    #    break
                     current = datetime.datetime.utcnow()
                     for exp_min in [360, 180, 60]:
                         app_user = self.bot.get_user(details['user_id'])
@@ -103,7 +100,11 @@ class Background(commands.Cog):
                             await reminder_chan.send(user_msg)
                             await staff_cog.send_logs(server_msg)
                             time.sleep(1)
+                            await team_chan.send(embed=embed)
                             await sheet.update_data(found_data)
+                            msg = ('DreamieBot archived the row of {} in the '
+                                   'sheet.' % req_id)
+                            await staff_cog.send_logs(msg)
                             return await sheet.archive_column(req_id)
                         elif time_left <= reminder_period:
                             # remove microsecond, users dont care.
@@ -127,8 +128,9 @@ class Background(commands.Cog):
                                 await staff_cog.send_logs(log_msg)
                         else:
                             # debug
-                            print('current time: %s' % current)
-                            print('timer left: %s' % (then_dt+deadline-current))
+                            # print('current time: %s' % current)
+                            # print('timer left: %s' % (then_dt+deadline-current))
+                            pass
 
 
     @monitoring.before_loop
