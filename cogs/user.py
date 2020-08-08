@@ -21,6 +21,9 @@ LOG_CHANNEL = os.getenv('LOG_CHANNEL')
 TIME_FORMAT = os.getenv('TIME_FORMAT')
 # A cooldown timer for re-applying after last denied applications
 COOLDOWN_DAYS=7
+# When an application is found/ready, we allow 72 hours until it is finished.
+COUNTDOWN_HOURS = int(os.getenv('COUNTDOWN_HOURS'))
+
 
 class User(commands.Cog):
     '''User commands to maintain a villager application.'''
@@ -251,6 +254,17 @@ class User(commands.Cog):
                         found += 'application_id: **%s**\n' % request_id
                         found += utils.printadict(details, hide_self=True)
                         found += '\n'
+                    if details['status'] in (utils.Status.FOUND.name,
+                                             utils.Status.READY.name):
+                        # Show how much time is left when the application is
+                        # either found or ready.
+                        current = datetime.datetime.utcnow()
+                        then_ts = time.strptime(details['last_modified'], TIME_FORMAT)
+                        then_dt = datetime.datetime.fromtimestamp(time.mktime(then_ts))
+                        deadline = datetime.timedelta(hours=COUNTDOWN_HOURS)
+                        time_left = then_dt + deadline - current
+                        if (then_dt + deadline) > current:
+                           found += ('timer left: `%s`' % time_left)
         if found:
             await ctx.send("Found your application:")
             color = utils.status_color(details)
