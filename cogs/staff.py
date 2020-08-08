@@ -43,8 +43,9 @@ class Staff(commands.Cog):
         # Retrieve data_dict from the request log file.
         data_dict = utils.open_requestlog()
         found = ""
+        req_id = req_id.upper()
         for request_id, details in list(data_dict.items()):
-            if not req_id or str(request_id).lower() == str(req_id).lower():
+            if not req_id or request_id == req_id:
                 # all requests.
                 found += 'application_id: %s\n' % request_id
                 found += utils.printadict(details)
@@ -64,7 +65,7 @@ class Staff(commands.Cog):
         usage=('<req_id> will approve an application by its ID.\n'
                'To reject one, use "~review <req_id> denied"'))
     @is_staff
-    async def review(self, ctx, req_id, denied=None):
+    async def review(self, ctx, req_id, *input_args):
         '''Review an application. The result is either approved or denied.'''
         data_dict = utils.open_requestlog()
         user_id = 0
@@ -72,26 +73,33 @@ class Staff(commands.Cog):
         found = False
         found_data = dict()
         rejected = dict()
+        req_id = req_id.upper()
         for request_id, details in list(data_dict.items()):
-            if str(request_id) == str(req_id):
+            if request_id == req_id:
                 found = True
                 staff = ctx.message.author.name
                 staff += '#' + ctx.message.author.discriminator
                 staff_obj = self.bot.get_user(ctx.message.author.id)
                 user_id = details['user_id']
-                if str(denied) == 'denied':
+                reason = list(input_args).split(' ')
+                if reason[0].lower() == 'denied':
                     # The message is sent back to a user.
-                    message = ':disappointed_relieved: Thank you for submitting an application for '
-                    message += 'your dream villager! Unfortunately, your application has been '
-                    message += 'rejected after being reviewed by the Beyond Stalks Villager Adoption Team.'
-                    message += '\n\nThe reason for your application\'s rejection is inactivity within '
-                    message += 'the server community. Our adoption program is designed to be a reward '
-                    message += 'for consistently active and positive contributers to the server. '
-                    message += 'Please strive to meet these conditions and we will look forward to '
-                    message += 'a follow-up application from you in due time. You may submit a new '
-                    message += 'application in **2 weeks**.\n'
-                    message += '\nYour application has been closed.\n\n'
-                    message += 'Thanks!\nThe Villager Adoption Team'
+                    message = (':disappointed_relieved: Thank you for submitting'
+                               ' an application for your dream villager! '
+                               'Unfortunately, your application has been '
+                               'rejected after being reviewed by the '
+                               'Beyond Stalks Villager Adoption Team.\n\n'
+                               'The reason for your application\'s rejection is'
+                               'inactivity within the server community. Our '
+                               'adoption program is designed to be a reward '
+                               'for consistently active and positive '
+                               'contributers to the server.\n'
+                               'Please strive to meet these conditions and we '
+                               'will look forward to a follow-up application '
+                               'from you in due time. You may submit a new '
+                               'application in **one week**.\n'
+                               '\nYour application has been closed.\n\n'
+                               'Thanks!\nThe Villager Adoption Team')
                     # A server message for reference.
                     server_message = '%s denied an application: %s' % (staff,
                                                                        req_id)
@@ -104,12 +112,14 @@ class Staff(commands.Cog):
                     rejected[request_id] = details
                     # send to log channel
                     await self.send_logs(server_message)
+                    await ctx.send(server_message)
                     # send a DM to note the user.
                     if user_id:
                         user = self.bot.get_user(user_id)
                         dm_chan = user.dm_channel or await user.create_dm()
                         await dm_chan.send(message)
-                else:
+                if not reason:
+                    # Approve an application.
                     message = 'Application **%s** is now approved by %s!'
                     await ctx.send(message % (req_id, staff))
                     details['status'] = utils.Status.APPROVED.name
@@ -119,8 +129,9 @@ class Staff(commands.Cog):
                     details['last_modified'] = timestring
                     details['staff'] = staff
                     # send to log channel
-                    await self.send_logs('%s approved an application: %s' %
-                                         (staff, req_id))
+                    await self.send_logs('{} approved an application of {}:'
+                                         ' {}'.format(staff, details['name'],
+                                                      req_id))
                     # send a DM to note the user.
                     if user_id:
                         user = self.bot.get_user(user_id)
@@ -143,6 +154,8 @@ class Staff(commands.Cog):
         await sheet.update_data(found_data)
         if rejected:
             for k, _ in rejected.items():
+                msg = ('{} archived the row of {} in the sheet.'.format(staff, k))
+                await self.send_logs(msg)
                 await sheet.archive_column(k)
 
     @commands.command(name='found', aliases=['fnd'])
@@ -156,10 +169,11 @@ class Staff(commands.Cog):
         staff_obj = self.bot.get_user(ctx.message.author.id)
         dreamie = ''
         found_data = dict()
+        req_id = req_id.upper()
         for request_id, details in list(data_dict.items()):
-            if str(request_id) == str(req_id):
+            if request_id == req_id:
                 message = 'A villager of this application **%s** was found by %s!'
-                await ctx.send(message % (req_id, staff))
+                await ctx.send(message % (request_id, staff))
                 details['status'] = utils.Status.FOUND.name
                 dreamie = details['villager']
                 # only get the name
@@ -205,8 +219,9 @@ class Staff(commands.Cog):
         staff_obj = self.bot.get_user(ctx.message.author.id)
         villager = None
         found_data = dict()
+        req_id = req_id.upper()
         for request_id, details in list(data_dict.items()):
-            if str(request_id) == str(req_id):
+            if request_id == req_id:
                 message = 'Congrats! Application **%s** is now closed by %s!'
                 villager = details['villager'].split(',')[0]
                 await ctx.send(message % (req_id, staff))
@@ -222,11 +237,12 @@ class Staff(commands.Cog):
         utils.flush_requestlog(data_dict)
         time.sleep(1)
         await sheet.update_data(found_data)
-        # Then hide the close row.
-        await sheet.archive_column(req_id)
-
         # send to log channel
         await self.send_logs('%s closed an application: %s' % (staff, req_id))
+        # Then archive the closed row.
+        msg = ('{} archived the row of {} in the sheet.'.format(staff, req_id))
+        await self.send_logs(msg)
+        await sheet.archive_column(req_id)
         # send a DM to note the user.
         if user_id:
             user = self.bot.get_user(user_id)
@@ -314,8 +330,9 @@ class Staff(commands.Cog):
         staff += '#' + ctx.message.author.discriminator
         staff_obj = self.bot.get_user(ctx.message.author.id)
         found_data = dict()
+        req_id = req_id.upper()
         for request_id, details in list(data_dict.items()):
-            if str(request_id) == str(req_id):
+            if request_id == req_id:
                 villager = details['villager'].split(',')[0]
                 details['status'] = utils.Status.PROCESSING.name
                 # mark a last_modified timestring
@@ -459,11 +476,11 @@ class Staff(commands.Cog):
         '''Archive and hide a row in the sheet by an application ID.'''
         data_dict = utils.open_requestlog()
         toggle = list(input_args)
+        req_id = req_id.upper()
         if not toggle:
             # always hide
             await sheet.archive_column(req_id)
         else:
-            # unhide
             await sheet.archive_column(req_id, False)
         server_msg = 'DreamieBot archived a row of request_id %s in the sheet.'
         # send to log channel
