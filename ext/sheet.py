@@ -146,15 +146,16 @@ async def update_data(data):
                 'Last Modified(UTC)', 'Staff'
             ])
             wks.format('A1:I1', {'textFormat': {'bold': True}})
-        wks.append_row(new_data)
-        wks.format('A:I', {"horizontalAlignment": "CENTER"})
-
-        color, red_text = format_color(details['status'],
-                                       details['can_time_travel'])
         # Headers don't count as data.
         # And we've insert a new row, so move 2 by the length.
         row = len(all_data) + 2
+        # debug
+        print('current row: %d' % row)
         data_range = 'A{}:I{}'.format(row, row)
+        wks.append_row(new_data, table_range=data_range)
+        wks.format('A:I', {"horizontalAlignment": "CENTER"})
+        color, red_text = format_color(details['status'],
+                                       details['can_time_travel'])
         # Update color and text format.
         wks.format(data_range, color)
         if red_text:
@@ -168,7 +169,7 @@ async def insert_note(request_id, notes):
 
 async def archive_column(request_id, hide=True):
     '''Archive a column to hide from user views.'''
-    # Assuming request_id should exist in the sheet already.
+    # Assuming request_id should exist in the sheet 'Sheet1' already.
     cell = wks.find(str(request_id))
     row = cell.row
     requests = [{
