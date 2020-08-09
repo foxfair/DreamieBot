@@ -4,6 +4,7 @@ import datetime
 import inspect
 import json
 import logging
+from optparse import OptionParser
 import os
 
 import discord
@@ -28,12 +29,20 @@ BOT_AVAIL_STATUS = 'Fostering Dreamies'
 # If this prefix gets changed, change it in on_message() as well.
 BOT_PREFIX = {'user': '~', 'admin': '&'}
 
-# The Dreamie Bot starts here.
+###### The Dreamie Bot starts here. ######
 bot = commands.Bot(command_prefix=BOT_PREFIX.values(),
                    owner_id=auth_config.OWNER)
 all_extensions = [
     x.replace('.py', '') for x in os.listdir('cogs') if x.endswith('.py')
 ]
+
+parser = OptionParser()
+parser.set_defaults(quiet=False)
+parser.add_option("-q", "--quiet", action="store_true", dest="quiet",
+                  help="[Internal] When test new functions, use this flag to "
+                       "make the bot quiet and not send messages to team channel")
+
+(options, _) = parser.parse_args()
 
 # loggers start here. NOTE: logs/ should exist.
 logger = logging.getLogger('discord')
@@ -251,4 +260,7 @@ async def shutdown(ctx):
 
 
 if __name__ == '__main__':
+    # pass this be_quiet attribute to background module, and decide if the bot
+    # needs to send messages to the team channel.
+    bot.be_quiet = True if options.quiet else False
     bot.run(TOKEN)

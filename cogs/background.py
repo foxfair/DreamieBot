@@ -58,7 +58,8 @@ class Background(commands.Cog):
                         status]:
                     self.last_status[status] = report
                     await dm_chan.send(embed=embed)
-                    await team_chan.send(embed=embed)
+                    if not self.bot.be_quiet:
+                        await team_chan.send(embed=embed)
         # To guarantee the first task will monitor this 'countdown' task.
         self.loop_counter += 1
         if (self.loop_counter % 4) == 0:
@@ -100,7 +101,8 @@ class Background(commands.Cog):
                             await reminder_chan.send(user_msg)
                             await staff_cog.send_logs(server_msg)
                             time.sleep(1)
-                            await team_chan.send(embed=embed)
+                            if not self.bot.be_quiet:
+                                await team_chan.send(embed=embed)
                             await sheet.update_data(found_data)
                             msg = ('DreamieBot archived the row of {} in the '
                                    'sheet.' % req_id)
