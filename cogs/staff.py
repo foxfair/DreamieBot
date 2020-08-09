@@ -65,7 +65,7 @@ class Staff(commands.Cog):
         usage=('<req_id> will approve an application by its ID.\n'
                'To reject one, use "~review <req_id> denied"'))
     @is_staff
-    async def review(self, ctx, req_id, *input_args):
+    async def review(self, ctx, req_id, token=None):
         '''Review an application. The result is either approved or denied.'''
         data_dict = utils.open_requestlog()
         user_id = 0
@@ -81,8 +81,7 @@ class Staff(commands.Cog):
                 staff += '#' + ctx.message.author.discriminator
                 staff_obj = self.bot.get_user(ctx.message.author.id)
                 user_id = details['user_id']
-                reason = list(input_args).split(' ')
-                if reason[0].lower() == 'denied':
+                if str(token).lower() == 'denied':
                     # The message is sent back to a user.
                     message = (':disappointed_relieved: Thank you for submitting'
                                ' an application for your dream villager! '
@@ -118,7 +117,7 @@ class Staff(commands.Cog):
                         user = self.bot.get_user(user_id)
                         dm_chan = user.dm_channel or await user.create_dm()
                         await dm_chan.send(message)
-                if not reason:
+                if not token:
                     # Approve an application.
                     message = 'Application **%s** is now approved by %s!'
                     await ctx.send(message % (req_id, staff))
